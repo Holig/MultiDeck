@@ -13,6 +13,7 @@
     "build:launcher": "launcher\\build-launcher.bat",
     "build:installer": "launcher\\build-installer.bat",
     "build:all": "npm run build:client && npm run build:server && npm run build:launcher",
+    "release": "publish-version.bat",
     "start:prod": "cd server && npm start"
   },
   "devDependencies": {

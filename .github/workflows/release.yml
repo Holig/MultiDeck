@@ -1,0 +1,47 @@
+name: Release MultiDeck
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Publish Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress
+
+      - name: Install dependencies
+        shell: cmd
+        run: |
+          call npm install
+          cd server && call npm install
+          cd ..\client && call npm install
+
+      - name: Build Installer (React + Server + Launcher + Setup.exe)
+        shell: cmd
+        run: |
+          call npm run build:installer
+
+      - name: Publish GitHub Release with Setup.exe
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installer_output/MultiDeck-Setup.exe
+          name: MultiDeck ${{ github.ref_name }} — Installateur Windows Autonome
+          draft: false
+          prerelease: false
+          generate_release_notes: true
