@@ -1,0 +1,21 @@
+{
+  "name": "multideck-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MultiDeck - Open Source Multi-column TweetDeck Alternative powered by Playwright",
+  "scripts": {
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"blue,green\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "build:launcher": "launcher\\build-launcher.bat",
+    "build:installer": "launcher\\build-installer.bat",
+    "build:all": "npm run build:client && npm run build:server && npm run build:launcher",
+    "start:prod": "cd server && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

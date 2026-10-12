@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs & Binaries
+dist/
+build/
+node/
+installer_output/
+*.exe
+
+# Playwright & Browser user data & caches
+server/user_data/
+*.log
+runtime-info.json
+server/runtime-info.json
+*cookies*.json
+*.sqlite*
+
+# Environment variables
+.env
+.env.local
+
+# OS & Cache files
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+
+
