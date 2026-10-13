@@ -231,7 +231,27 @@ export class PlaywrightManager {
         isAuthenticated = hasSession;
       } else if (platform === 'youtube') {
         const hasLogin = allCookies.some((c) => (c.name === 'LOGIN_INFO' || c.name === 'SAPISID' || c.name === 'SID' || c.name === '__Secure-1PSID') && c.value && c.value.length > 5);
-        isAuthenticated = hasLogin;
+        if (hasLogin) {
+          // Vérification rapide que la session est réellement active et non expirée
+          try {
+            const h = youtubeService.getAuthCookieHeader();
+            if (h) {
+              const res = await fetch('https://www.youtube.com/feed/subscriptions', {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                  'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+                  'Cookie': h,
+                },
+              });
+              if (res.ok) {
+                const text = await res.text();
+                isAuthenticated = !text.includes('backgroundPromoRenderer') && !text.includes('Connectez-vous pour découvrir les nouveautés');
+              }
+            }
+          } catch (e) {
+            isAuthenticated = false;
+          }
+        }
       } else if (platform === 'threads') {
         const hasSessionId = allCookies.some((c) => (c.name === 'sessionid' || c.name === 'ds_user_id') && c.value && c.value.length > 2);
         const hasCsrf = allCookies.some((c) => c.name === 'csrftoken' && ((c.domain || '').includes('threads.net') || (c.domain || '').includes('threads.com')));

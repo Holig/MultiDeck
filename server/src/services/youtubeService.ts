@@ -115,16 +115,16 @@ export class YouTubeService {
         }
       }
 
-      // Priorité stricte : ajouter d'abord google.com, puis écraser par youtube.com pour garantir l'autorité de session
+      // Priorité stricte : ajouter d'abord .google.com, puis écraser par .youtube.com
       const map = new Map<string, string>();
       for (const c of cookies) {
-        if (c.domain && c.domain.includes('google.com') && c.name && c.value) {
-          map.set(c.name, c.value);
+        if (c.domain && c.domain === '.google.com' && c.name && c.value) {
+          if (/^[\x20-\x7E]*$/.test(c.value)) map.set(c.name, c.value);
         }
       }
       for (const c of cookies) {
         if (c.domain && c.domain.includes('youtube.com') && c.name && c.value) {
-          map.set(c.name, c.value);
+          if (/^[\x20-\x7E]*$/.test(c.value)) map.set(c.name, c.value);
         }
       }
 

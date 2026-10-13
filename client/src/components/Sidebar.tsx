@@ -194,11 +194,17 @@ export const Sidebar: React.FC = () => {
         <button
           onClick={() => handleOpenAuth('youtube')}
           className="w-8 h-8 rounded-lg theme-bg-surface hover:opacity-80 flex items-center justify-center relative hover:scale-105 transition-all shadow-sm theme-border border"
-          title={`YouTube : ${systemStatus?.youtube.isAuthenticated || systemStatus?.youtube.hasApiKey ? 'Connecté' : 'Non connecté'}`}
+          title={`YouTube : ${
+            systemStatus?.youtube.isAuthenticated 
+              ? 'Compte & Abonnements connectés' 
+              : (systemStatus?.youtube.hasApiKey ? 'Clé API connectée (Recherche publique uniquement - Connexion requise pour les Abonnements)' : 'Non connecté')
+          }`}
         >
           <Youtube className="w-4 h-4 text-red-500" />
           <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 theme-border ${
-            systemStatus?.youtube.isAuthenticated || systemStatus?.youtube.hasApiKey ? 'bg-emerald-400' : 'bg-amber-400'
+            systemStatus?.youtube.isAuthenticated 
+              ? 'bg-emerald-400' 
+              : (systemStatus?.youtube.hasApiKey ? 'bg-blue-400' : 'bg-amber-400')
           }`} />
         </button>
       </div>
