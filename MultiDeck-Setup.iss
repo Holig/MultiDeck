@@ -3,9 +3,9 @@
 ; ========================================================
 
 #define MyAppName "MultiDeck"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.2"
 #define MyAppPublisher "MultiDeck Open Source"
-#define MyAppURL "https://github.com/your-username/MultiDeck"
+#define MyAppURL "https://github.com/Holig/MultiDeck"
 #define MyAppExeName "MultiDeck.exe"
 
 [Setup]
