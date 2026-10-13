@@ -3,6 +3,9 @@ import { twitterService } from '../services/twitterService';
 import { youtubeService } from '../services/youtubeService';
 import { instagramService } from '../services/instagramService';
 import { tiktokService } from '../services/tiktokService';
+import { blueskyService } from '../services/blueskyService';
+import { threadsService } from '../services/threadsService';
+import { redditService } from '../services/redditService';
 import { cacheManager } from '../cacheManager';
 import { playwrightManager } from '../playwrightManager';
 import { Platform, FeedResponse } from '../types';
@@ -17,6 +20,7 @@ router.get('/:platform/user', async (req: Request, res: Response) => {
     const forceRefresh = req.query.refresh === 'true';
 
     let feed: FeedResponse;
+    const cursor = (req.query.cursor as string) || undefined;
     if (platform === 'youtube') {
       const filter = (req.query.filter as any) || 'all';
       feed = await youtubeService.getChannelFeed(username, filter, forceRefresh);
@@ -24,6 +28,12 @@ router.get('/:platform/user', async (req: Request, res: Response) => {
       feed = await instagramService.getUserPosts(username, forceRefresh);
     } else if (platform === 'tiktok') {
       feed = await tiktokService.getUserVideos(username, forceRefresh);
+    } else if (platform === 'bluesky') {
+      feed = await blueskyService.getUserFeed(username, forceRefresh, cursor);
+    } else if (platform === 'threads') {
+      feed = await threadsService.getUserFeed(username, forceRefresh);
+    } else if (platform === 'reddit') {
+      feed = await redditService.getUserFeed(username, forceRefresh, cursor);
     } else {
       feed = await twitterService.getUserFeed(username, forceRefresh);
     }
@@ -61,6 +71,10 @@ router.get('/:platform/subscriptions', async (req: Request, res: Response) => {
       feed = await twitterService.getHomeFeed('following_latest', forceRefresh);
     } else if (platform === 'instagram') {
       feed = await instagramService.getHomeFeed('following_latest', forceRefresh);
+    } else if (platform === 'bluesky') {
+      feed = await blueskyService.getHomeFeed('for_you', forceRefresh);
+    } else if (platform === 'reddit') {
+      feed = await redditService.getHomeFeed('for_you', forceRefresh);
     } else {
       feed = await tiktokService.getHomeFeed('following', forceRefresh);
     }
@@ -77,6 +91,7 @@ router.get('/:platform/search', async (req: Request, res: Response) => {
     const platform = req.params.platform as Platform;
     const query = (req.query.q as string) || '';
     const forceRefresh = req.query.refresh === 'true';
+    const cursor = (req.query.cursor as string) || undefined;
 
     let feed: FeedResponse;
     if (platform === 'youtube') {
@@ -85,6 +100,12 @@ router.get('/:platform/search', async (req: Request, res: Response) => {
       feed = await instagramService.searchHashtag(query, forceRefresh);
     } else if (platform === 'tiktok') {
       feed = await tiktokService.searchHashtag(query, forceRefresh);
+    } else if (platform === 'bluesky') {
+      feed = await blueskyService.searchFeed(query, forceRefresh, cursor);
+    } else if (platform === 'threads') {
+      feed = await threadsService.searchFeed(query, forceRefresh);
+    } else if (platform === 'reddit') {
+      feed = await redditService.searchFeed(query, forceRefresh, cursor);
     } else {
       feed = await twitterService.searchFeed(query, forceRefresh);
     }
@@ -102,6 +123,9 @@ router.get('/:platform/home', async (req: Request, res: Response) => {
     const mode = (req.query.mode as any) || 'for_you';
     const forceRefresh = req.query.refresh === 'true';
 
+    const username = (req.query.username as string) || (req.query.id as string) || '';
+    const cursor = (req.query.cursor as string) || undefined;
+
     let feed: FeedResponse;
     if (platform === 'youtube') {
       if (mode.startsWith('sub_') || mode === 'following_latest' || mode === 'subscriptions') {
@@ -114,6 +138,12 @@ router.get('/:platform/home', async (req: Request, res: Response) => {
       feed = await instagramService.getHomeFeed(mode, forceRefresh);
     } else if (platform === 'tiktok') {
       feed = await tiktokService.getHomeFeed(mode === 'following_latest' ? 'following' : 'for_you', forceRefresh);
+    } else if (platform === 'bluesky') {
+      feed = await blueskyService.getHomeFeed(mode, forceRefresh, username, cursor);
+    } else if (platform === 'threads') {
+      feed = await threadsService.getHomeFeed(mode, forceRefresh);
+    } else if (platform === 'reddit') {
+      feed = await redditService.getHomeFeed(mode, forceRefresh, username, cursor);
     } else {
       feed = await twitterService.getHomeFeed(mode, forceRefresh);
     }
@@ -121,6 +151,43 @@ router.get('/:platform/home', async (req: Request, res: Response) => {
     return res.json(feed);
   } catch (error: any) {
     return res.status(500).json({ error: error.message || 'Erreur fil accueil' });
+  }
+});
+
+// GET /api/feed/:platform/thread?id=...&url=... - Récupération de la conversation complète
+router.get('/:platform/thread', async (req: Request, res: Response) => {
+  try {
+    const platform = req.params.platform as Platform;
+    const target = (req.query.id as string) || (req.query.url as string) || (req.query.uri as string) || '';
+    const forceRefresh = req.query.refresh === 'true';
+
+    if (!target) {
+      return res.status(400).json({ error: 'Identifiant ou URL du post requis pour charger la conversation' });
+    }
+
+    if (platform === 'bluesky') {
+      const thread = await blueskyService.getPostThread(target, forceRefresh);
+      return res.json(thread);
+    }
+
+    if (platform === 'twitter') {
+      const thread = await twitterService.getPostThread(target, forceRefresh);
+      return res.json(thread);
+    }
+
+    if (platform === 'threads') {
+      const thread = await threadsService.getPostThread(target, forceRefresh);
+      return res.json(thread);
+    }
+
+    if (platform === 'reddit') {
+      const thread = await redditService.getPostThread(target, forceRefresh);
+      return res.json(thread);
+    }
+
+    return res.status(400).json({ error: `La vue conversation n'est pas encore disponible pour ${platform}` });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Erreur lors du chargement de la discussion' });
   }
 });
 
@@ -247,6 +314,52 @@ router.post('/clear-cache', async (_req: Request, res: Response) => {
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: `Erreur lors de la purge : ${err.message}` });
+  }
+});
+
+// POST /api/feed/action - Exécution d'une interaction (Like, Repost, Reply)
+router.post('/action', async (req: Request, res: Response) => {
+  try {
+    const { platform, postId, postUrl, action, value, text } = req.body;
+    if (!platform || !postId || !action) {
+      return res.status(400).json({ success: false, error: 'Paramètres requis manquants' });
+    }
+
+    let intentUrl: string | undefined;
+
+    if (platform === 'reddit') {
+      if (action === 'like') {
+        const dir = value ? 1 : 0;
+        await redditService.vote(postId, dir);
+      } else if (action === 'reply' && text) {
+        await redditService.submitComment(postId, text);
+      }
+    } else if (platform === 'twitter') {
+      const cleanTweetId = (postId || '').replace(/[^0-9]/g, '');
+      if (action === 'like') {
+        intentUrl = `https://twitter.com/intent/like?tweet_id=${cleanTweetId}`;
+      } else if (action === 'repost') {
+        intentUrl = `https://twitter.com/intent/retweet?tweet_id=${cleanTweetId}`;
+      } else if (action === 'reply') {
+        intentUrl = `https://twitter.com/intent/tweet?in_reply_to=${cleanTweetId}${text ? `&text=${encodeURIComponent(text)}` : ''}`;
+      }
+    } else if (platform === 'threads') {
+      if (postUrl) {
+        intentUrl = postUrl;
+      }
+    }
+
+    return res.json({
+      success: true,
+      platform,
+      postId,
+      action,
+      intentUrl,
+      message: `Action ${action} enregistrée pour ${platform}`,
+    });
+  } catch (err: any) {
+    console.error('[Action] Erreur :', err.message);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

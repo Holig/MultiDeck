@@ -21,7 +21,7 @@ router.post('/auth/:platform/login', async (req: Request, res: Response) => {
     const platform = req.params.platform as Platform;
     const engine: BrowserEngine = req.body?.engine || 'chromium';
 
-    if (!['twitter', 'instagram', 'tiktok'].includes(platform)) {
+    if (!['twitter', 'instagram', 'tiktok', 'threads', 'reddit'].includes(platform)) {
       return res.status(400).json({ success: false, message: 'Plateforme non supportée pour la connexion Playwright' });
     }
 

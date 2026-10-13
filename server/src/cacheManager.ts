@@ -4,6 +4,7 @@ interface CacheEntry {
   data: SocialPost[];
   timestamp: number;
   source: 'live' | 'cache' | 'demo';
+  nextCursor?: string;
 }
 
 export class CacheManager {
@@ -40,11 +41,12 @@ export class CacheManager {
     return this.cache.get(key) || null;
   }
 
-  public set(key: string, data: SocialPost[], source: 'live' | 'cache' | 'demo' = 'live'): void {
+  public set(key: string, data: SocialPost[], source: 'live' | 'cache' | 'demo' = 'live', nextCursor?: string): void {
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
       source,
+      nextCursor,
     });
     this.lastFetchTime.set(key, Date.now());
   }

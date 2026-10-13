@@ -5,9 +5,11 @@ import {
   ActiveMediaPreview, 
   ThemeMode, 
   Platform, 
-  BrowserEngine 
+  BrowserEngine,
+  SocialPost 
 } from '../types';
 import { api } from '../services/api';
+import { SupportedLanguage, getTranslation } from '../i18n/translations';
 
 interface DeckContextType {
   columns: ColumnConfig[];
@@ -32,6 +34,10 @@ interface DeckContextType {
   activeMediaPreview: ActiveMediaPreview | null;
   setActiveMediaPreview: (preview: ActiveMediaPreview | null) => void;
 
+  // Fil de conversation / Thread Viewer
+  activeThreadPost: SocialPost | null;
+  setActiveThreadPost: (post: SocialPost | null) => void;
+
   // Modales
   isAddModalOpen: boolean;
   setIsAddModalOpen: (open: boolean) => void;
@@ -47,6 +53,13 @@ interface DeckContextType {
   // Thème
   theme: ThemeMode;
   setTheme: (theme: ThemeMode) => void;
+
+  // Langue & Traduction
+  language: SupportedLanguage;
+  setLanguage: (lang: SupportedLanguage) => void;
+  autoTranslatePosts: boolean;
+  setAutoTranslatePosts: (enabled: boolean) => void;
+  t: (key: string) => string;
 }
 
 const DEFAULT_COLUMNS: ColumnConfig[] = [
@@ -89,6 +102,8 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
 
 const LOCAL_STORAGE_COLUMNS_KEY = 'multideck_v2_columns';
 const LOCAL_STORAGE_THEME_KEY = 'multideck_theme';
+const LOCAL_STORAGE_LANG_KEY = 'multideck_language';
+const LOCAL_STORAGE_AUTO_TRANSLATE_KEY = 'multideck_auto_translate';
 
 const DeckContext = createContext<DeckContextType | undefined>(undefined);
 
@@ -114,13 +129,56 @@ export const DeckProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
 
-  // Modales et lecteur interactif
+  // Modales, lecteur interactif et thread viewer
   const [activeMediaPreview, setActiveMediaPreview] = useState<ActiveMediaPreview | null>(null);
+  const [activeThreadPost, setActiveThreadPost] = useState<SocialPost | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [selectedAuthPlatform, setSelectedAuthPlatform] = useState<Platform>('twitter');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+
+  // Langue de l'interface & Traduction
+  const [language, setLanguageState] = useState<SupportedLanguage>(() => {
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_LANG_KEY) as SupportedLanguage;
+      if (['fr', 'en', 'es', 'de', 'it', 'pt', 'ja'].includes(saved)) return saved;
+      const nav = navigator.language.slice(0, 2).toLowerCase() as SupportedLanguage;
+      if (['fr', 'en', 'es', 'de', 'it', 'pt', 'ja'].includes(nav)) return nav;
+    } catch {}
+    return 'fr';
+  });
+
+  const [autoTranslatePosts, setAutoTranslatePostsState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(LOCAL_STORAGE_AUTO_TRANSLATE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const setLanguage = (newLang: SupportedLanguage) => {
+    setLanguageState(newLang);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_LANG_KEY, newLang);
+      document.documentElement.setAttribute('lang', newLang);
+    } catch {}
+  };
+
+  const setAutoTranslatePosts = (enabled: boolean) => {
+    setAutoTranslatePostsState(enabled);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_AUTO_TRANSLATE_KEY, enabled.toString());
+    } catch {}
+  };
+
+  const t = (key: string): string => {
+    return getTranslation(language, key);
+  };
+
+  useEffect(() => {
+    document.documentElement.setAttribute('lang', language);
+  }, [language]);
 
   // Thème
   const [theme, setThemeState] = useState<ThemeMode>(() => {
@@ -161,6 +219,7 @@ export const DeckProvider: React.FC<{ children: React.ReactNode }> = ({ children
         instagram: { isAuthenticated: false, isBrowserOpen: false, cookiesDetected: false, lastChecked: new Date().toISOString() },
         tiktok: { isAuthenticated: false, isBrowserOpen: false, cookiesDetected: false, lastChecked: new Date().toISOString() },
         youtube: { isAuthenticated: false, isBrowserOpen: false, cookiesDetected: false, lastChecked: new Date().toISOString(), hasApiKey: false },
+        bluesky: { isAuthenticated: true, isBrowserOpen: false, cookiesDetected: false, lastChecked: new Date().toISOString() },
       });
     } finally {
       setIsCheckingStatus(false);
@@ -280,6 +339,8 @@ export const DeckProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logoutPlatform,
         activeMediaPreview,
         setActiveMediaPreview,
+        activeThreadPost,
+        setActiveThreadPost,
         isAddModalOpen,
         setIsAddModalOpen,
         isAuthModalOpen,
@@ -292,6 +353,11 @@ export const DeckProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsInfoModalOpen,
         theme,
         setTheme,
+        language,
+        setLanguage,
+        autoTranslatePosts,
+        setAutoTranslatePosts,
+        t,
       }}
     >
       {children}

@@ -7,6 +7,7 @@ import { AuthModal } from './components/AuthModal';
 import { MediaModal } from './components/MediaModal';
 import { SettingsModal } from './components/SettingsModal';
 import { InfoModal } from './components/InfoModal';
+import { ThreadModal } from './components/ThreadModal';
 
 const DeckApp: React.FC = () => {
   return (
@@ -23,6 +24,7 @@ const DeckApp: React.FC = () => {
       <MediaModal />
       <SettingsModal />
       <InfoModal />
+      <ThreadModal />
     </div>
   );
 };

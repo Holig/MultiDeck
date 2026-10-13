@@ -1,18 +1,18 @@
 @echo off
-setlocal enabledelayedexpansion
+chcp 65001 >nul
+cd /d "%~dp0"
 
 echo ===================================================================
 echo   MultiDeck - Publication Automatique de Version (GitHub Actions)
 echo ===================================================================
 echo.
 
-:: 1. Gestion du tag de version
 set "TAG=%~1"
 if "%TAG%"=="" (
     echo Derniers tags existants :
-    git tag --sort=-v:refname | head -n 3 2>nul || git tag
+    git tag --sort=-v:refname 2>nul
     echo.
-    set /p "TAG=Entrez le nouveau tag de version (ex: v1.0.1) : "
+    set /p "TAG=Entrez le nouveau tag de version (ex: v1.1.0) : "
 )
 
 if "%TAG%"=="" (
@@ -21,14 +21,13 @@ if "%TAG%"=="" (
     exit /b 1
 )
 
-:: 2. Gestion du message de commit
 set "MSG=%~2"
 if "%MSG%"=="" (
-    set /p "MSG=Entrez le message de commit [defaut: Correction et améliorations] : "
+    set /p "MSG=Entrez le message de commit [defaut: Corrections et ameliorations] : "
 )
 
 if "%MSG%"=="" (
-    set "MSG=Correction et améliorations"
+    set "MSG=Corrections et ameliorations"
 )
 
 echo.
@@ -38,33 +37,21 @@ echo  Message de commit  : %MSG%
 echo -------------------------------------------------------------------
 echo.
 
-:: 3. Execution des commandes Git
 echo [1/4] Ajout des fichiers modifies (git add .)...
 git add .
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERREUR] Echec lors de git add.
-    pause
-    exit /b %ERRORLEVEL%
-)
 
 echo [2/4] Creation du commit (git commit)...
-git commit -m "%MSG%"
-:: Note: si aucun fichier n'a change, git commit peut retourner 1, on continue
+git commit -m "%MSG%" 2>nul
 
 echo [3/4] Creation du tag local (%TAG%)...
-git tag %TAG%
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERREUR] Echec lors de la creation du tag %TAG% (le tag existe peut-etre deja).
-    pause
-    exit /b %ERRORLEVEL%
-)
+git tag %TAG% 2>nul
 
 echo [4/4] Envoi vers GitHub avec les tags (git push origin main --tags)...
 git push origin main --tags
-if %ERRORLEVEL% NEQ 0 (
+if errorlevel 1 (
     echo [ERREUR] Echec lors du git push.
     pause
-    exit /b %ERRORLEVEL%
+    exit /b 1
 )
 
 echo.

@@ -12,7 +12,12 @@ import {
   Wifi,
   Youtube,
   Instagram,
-  Flame
+  Flame,
+  Plus,
+  Loader2,
+  ArrowDown,
+  Palette,
+  RotateCcw
 } from 'lucide-react';
 import { ColumnConfig, SocialPost, FeedResponse, ColumnWidth, Platform, FeedMode } from '../types';
 import { useDeck } from '../context/DeckContext';
@@ -26,7 +31,7 @@ interface ColumnProps {
 }
 
 export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
-  const { removeColumn, updateColumn, moveColumn, setIsAuthModalOpen, setSelectedAuthPlatform } = useDeck();
+  const { removeColumn, updateColumn, moveColumn, setIsAuthModalOpen, setSelectedAuthPlatform, t } = useDeck();
   
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -39,7 +44,12 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
   const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(column.refreshInterval);
 
+  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
 
   // Changement dynamique du mode de fil (X ou Instagram) avec rechargement immédiat
   const changeFeedMode = async (mode: FeedMode) => {
@@ -55,9 +65,18 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
       newTitle = titles[mode] || 'X : Fil d’actualité';
     } else if (column.platform === 'instagram') {
       newTitle = mode === 'following_latest' ? 'Instagram : Suivi(e)s' : 'Instagram : Pour vous';
+    } else if (column.platform === 'reddit') {
+      const titles: Partial<Record<FeedMode, string>> = {
+        for_you: 'Reddit : Mes Abonnements',
+        following_latest: 'Reddit : Récents (New)',
+        following_top: 'Reddit : Populaire (Hot/Top)',
+      };
+      newTitle = titles[mode] || 'Reddit : Fil';
     }
 
     setPosts([]); // Réinitialiser immédiatement les posts visibles
+    setNextCursor(undefined);
+    setHasMore(true);
     setIsLoading(true);
     setError(null);
     updateColumn(column.id, { feedMode: mode, title: newTitle });
@@ -65,6 +84,8 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
     try {
       const res = await api.getHomeFeed(column.platform, mode, isSameMode);
       setPosts(res.posts || []);
+      setNextCursor(res.nextCursor);
+      setHasMore(res.nextCursor ? true : (res.posts && res.posts.length > 0));
       setSourceInfo({ source: res.source, message: res.message });
       setSecondsUntilRefresh(column.refreshInterval);
     } catch (err: any) {
@@ -88,7 +109,7 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
 
       let res: FeedResponse;
       if (column.contentType === 'home') {
-        res = await api.getHomeFeed(column.platform, column.feedMode || 'for_you', force);
+        res = await api.getHomeFeed(column.platform, column.feedMode || 'for_you', force, column.username);
       } else if (column.contentType === 'search') {
         res = await api.getSearchFeed(column.platform, column.query || '', force);
       } else if (column.contentType === 'user') {
@@ -102,6 +123,9 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
       }
 
       setPosts(res.posts || []);
+      setNextCursor(res.nextCursor);
+      // Toujours autoriser le chargement de la suite si des posts sont présents
+      setHasMore(res.posts && res.posts.length > 0 ? true : false);
       setSourceInfo({ source: res.source, message: res.message });
       setSecondsUntilRefresh(column.refreshInterval);
     } catch (err: any) {
@@ -112,6 +136,96 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
       setIsRefreshing(false);
     }
   }, [column.platform, column.contentType, column.feedMode, column.query, column.username, column.refreshInterval]);
+
+  // Chargement de la suite des publications (Afficher plus / Scroll infini)
+  const lastScrollLoadTime = useRef(0);
+  const consecutiveEmptyBatches = useRef(0);
+  const [loadMoreMessage, setLoadMoreMessage] = useState<string | null>(null);
+
+  const loadMorePosts = useCallback(async (forceRefresh = false) => {
+    if (loadingMoreRef.current || isLoadingMore || isLoading) return;
+
+    // Cooldown de sécurité : 1.5 seconde minimum entre 2 déclenchements automatiques (sauf si forcé manuellement)
+    const now = Date.now();
+    if (!forceRefresh && now - lastScrollLoadTime.current < 1500) return;
+    lastScrollLoadTime.current = now;
+
+    loadingMoreRef.current = true;
+    setIsLoadingMore(true);
+    setLoadMoreMessage(null);
+
+    try {
+      let res: FeedResponse;
+      if (column.contentType === 'home') {
+        res = await api.getHomeFeed(column.platform, column.feedMode || 'for_you', forceRefresh, column.username, nextCursor);
+      } else if (column.contentType === 'search') {
+        res = await api.getSearchFeed(column.platform, column.query || '', forceRefresh, nextCursor);
+      } else if (column.contentType === 'user') {
+        res = await api.getUserFeed(column.platform, column.username || '', forceRefresh, nextCursor);
+      } else if (column.contentType === 'shorts') {
+        res = await api.getShortsFeed(column.platform, column.query || 'trending', forceRefresh);
+      } else {
+        res = { platform: column.platform, posts: [], source: 'live' };
+      }
+
+      const newBatch = res.posts || [];
+      if (newBatch.length === 0) {
+        setHasMore(false);
+        setLoadMoreMessage('Aucune nouvelle publication disponible.');
+      } else {
+        let addedCount = 0;
+        setPosts((prev) => {
+          const seen = new Set(prev.map((p) => p.id));
+          const fresh = newBatch.filter((p) => !seen.has(p.id));
+          addedCount = fresh.length;
+          if (fresh.length === 0) {
+            return prev;
+          }
+          return [...prev, ...fresh];
+        });
+
+        setNextCursor(res.nextCursor);
+
+        // Si aucun nouveau post n'a été inséré (déjà tous présents)
+        if (addedCount === 0) {
+          consecutiveEmptyBatches.current += 1;
+          if (consecutiveEmptyBatches.current >= 2 || !res.nextCursor) {
+            setHasMore(false);
+            setLoadMoreMessage('Fil à jour (tous les posts récents sont affichés).');
+          }
+        } else {
+          consecutiveEmptyBatches.current = 0;
+          setHasMore(true);
+          setLoadMoreMessage(null);
+        }
+      }
+    } catch (err: any) {
+      console.warn(`[Column ${column.id}] Erreur chargement suite :`, err.message);
+      setHasMore(false);
+      setLoadMoreMessage('Erreur lors du chargement de la suite.');
+    } finally {
+      setIsLoadingMore(false);
+      loadingMoreRef.current = false;
+    }
+  }, [column.contentType, column.platform, column.feedMode, column.username, column.query, nextCursor, isLoadingMore, isLoading]);
+
+  // Détection du scroll en bas de colonne (molette de la souris ou défilement tactile)
+  const lastScrollTop = useRef(0);
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el || isLoadingMore || isLoading || !hasMore) return;
+
+    // S'assurer que l'utilisateur scrolle bien vers le bas (et pas vers le haut)
+    const isScrollingDown = el.scrollTop > lastScrollTop.current;
+    lastScrollTop.current = el.scrollTop;
+    if (!isScrollingDown) return;
+
+    // Seuil de détection : fond atteint (moins de 40px)
+    const isAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
+    if (isAtBottom) {
+      loadMorePosts();
+    }
+  }, [loadMorePosts, isLoadingMore, isLoading, hasMore]);
 
   useEffect(() => {
     loadFeed(false);
@@ -148,17 +262,21 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
       );
     })
     .sort((a, b) => {
-      if (
+      // Tri chronologique strict si mode "Récents" ou si le fil n'est pas algorithmique / top
+      const isChronologicalFeed =
         column.feedMode === 'following_latest' ||
         column.feedMode === 'sub_all' ||
         column.feedMode === 'sub_videos' ||
         column.feedMode === 'sub_shorts' ||
-        (column.platform === 'youtube' && column.contentType === 'home')
-      ) {
+        (column.platform === 'youtube' && column.contentType === 'home') ||
+        (column.platform === 'bluesky') ||
+        (column.contentType === 'user');
+
+      if (isChronologicalFeed) {
         const timeA = new Date(a.createdAt).getTime();
         const timeB = new Date(b.createdAt).getTime();
         if (!isNaN(timeA) && !isNaN(timeB)) {
-          return timeB - timeA; // Le plus récent en haut
+          return timeB - timeA; // Le plus récent en tête de colonne
         }
       }
       return 0;
@@ -173,6 +291,12 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
         return <Flame className="w-4 h-4 text-[#00f2fe]" />;
       case 'instagram':
         return <Instagram className="w-4 h-4 text-pink-500" />;
+      case 'bluesky':
+        return <span className="text-sm leading-none font-bold text-[#0285ff]">🦋</span>;
+      case 'threads':
+        return <span className="text-sm leading-none font-bold">🧵</span>;
+      case 'reddit':
+        return <span className="text-sm leading-none font-bold text-[#ff4500]">🤖</span>;
       case 'twitter':
       default:
         return <span className="text-xs font-black text-[#1d9bf0]">𝕏</span>;
@@ -185,10 +309,59 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
     lg: 'w-[480px] min-w-[480px]',
   };
 
+  // Teintes prédéfinies selon le réseau social
+  const platformTints: Record<Platform, { label: string; bg: string; border?: string }[]> = {
+    twitter: [
+      { label: 'Bleu X Subtil', bg: '#0b1622' },
+      { label: 'Bleu Nuit', bg: '#081a2e' },
+      { label: 'Bleu Glacier', bg: '#0e2439' },
+      { label: 'Bleu Électrique', bg: '#102d4a' },
+    ],
+    instagram: [
+      { label: 'Rose Insta Subtil', bg: '#1c1017' },
+      { label: 'Framboise Sombre', bg: '#2b0f1e' },
+      { label: 'Violet Coucher de Soleil', bg: '#260f2b' },
+      { label: 'Ambre Chaud', bg: '#291811' },
+    ],
+    youtube: [
+      { label: 'Rouge YouTube Subtil', bg: '#1c0d0d' },
+      { label: 'Bordeaux Sombre', bg: '#2d0f0f' },
+      { label: 'Rubis Fumé', bg: '#3b1212' },
+    ],
+    tiktok: [
+      { label: 'Cyan Néon Subtil', bg: '#0a1a1f' },
+      { label: 'Noir Cyan', bg: '#08171c' },
+      { label: 'Rose TikTok Subtil', bg: '#1f0d16' },
+    ],
+    bluesky: [
+      { label: 'Bleu Ciel Nocturne', bg: '#0a1726' },
+      { label: 'Bleu Azur Sombre', bg: '#0c1f36' },
+      { label: 'Bleu Océan', bg: '#082845' },
+    ],
+    reddit: [
+      { label: 'Orange Reddit Subtil', bg: '#1f130c' },
+      { label: 'Terracotta Sombre', bg: '#2e160a' },
+      { label: 'Feu Sombre', bg: '#3a1a09' },
+    ],
+    threads: [
+      { label: 'Graphite Profond', bg: '#121214' },
+      { label: 'Noir Charbon', bg: '#18191c' },
+      { label: 'Gris Sidéral', bg: '#202226' },
+    ],
+  };
+
+  const currentTints = platformTints[column.platform] || platformTints.twitter;
+  const hasCustomBg = Boolean(column.backgroundColor);
+
   return (
-    <div className={`h-full flex flex-col border-r theme-border theme-bg-column ${widthClasses[column.width]} flex-shrink-0 transition-colors duration-150`}>
+    <div 
+      className={`h-full flex flex-col border-r theme-border ${hasCustomBg ? '' : 'theme-bg-column'} ${widthClasses[column.width]} flex-shrink-0 transition-colors duration-150`}
+      style={hasCustomBg ? { backgroundColor: column.backgroundColor } : undefined}
+    >
       {/* En-tête de la colonne */}
-      <div className="h-13 theme-bg-column-header backdrop-blur-md border-b theme-border px-3 py-2.5 flex items-center justify-between z-10 sticky top-0">
+      <div 
+        className={`h-13 backdrop-blur-md border-b theme-border px-3 py-2.5 flex items-center justify-between z-10 sticky top-0 ${hasCustomBg ? 'bg-black/30' : 'theme-bg-column-header'}`}
+      >
         {/* Infos à gauche */}
         <div className="flex items-center gap-2 min-w-0">
           <div className="p-1.5 rounded-lg theme-bg-surface flex-shrink-0">
@@ -338,6 +511,42 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
         </div>
       )}
 
+      {/* Onglets rapides Reddit */}
+      {column.platform === 'reddit' && column.contentType === 'home' && (
+        <div className="flex items-center border-b theme-border theme-bg-column px-2 py-1.5 gap-1.5 text-xs">
+          <button
+            onClick={() => changeFeedMode('for_you')}
+            className={`flex-1 py-1 px-2 rounded-lg font-semibold transition-all text-center text-[11px] ${
+              (column.feedMode || 'for_you') === 'for_you'
+                ? 'bg-[#ff4500]/20 text-[#ff4500] font-bold ring-1 ring-[#ff4500]/40'
+                : 'theme-text-secondary hover:theme-text-primary hover:theme-bg-surface'
+            }`}
+          >
+            ✨ Abonnements
+          </button>
+          <button
+            onClick={() => changeFeedMode('following_top')}
+            className={`flex-1 py-1 px-2 rounded-lg font-semibold transition-all text-center text-[11px] ${
+              column.feedMode === 'following_top'
+                ? 'bg-[#ff4500]/20 text-[#ff4500] font-bold ring-1 ring-[#ff4500]/40'
+                : 'theme-text-secondary hover:theme-text-primary hover:theme-bg-surface'
+            }`}
+          >
+            🔥 Populaire
+          </button>
+          <button
+            onClick={() => changeFeedMode('following_latest')}
+            className={`flex-1 py-1 px-2 rounded-lg font-semibold transition-all text-center text-[11px] ${
+              column.feedMode === 'following_latest'
+                ? 'bg-[#ff4500]/20 text-[#ff4500] font-bold ring-1 ring-[#ff4500]/40'
+                : 'theme-text-secondary hover:theme-text-primary hover:theme-bg-surface'
+            }`}
+          >
+            ⏱️ Récents
+          </button>
+        </div>
+      )}
+
       {/* Panneau d'options dépliable */}
       {isOptionsOpen && (
         <div className="theme-bg-surface border-b theme-border p-3 space-y-3 text-xs">
@@ -442,6 +651,72 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
             </select>
           </div>
 
+          {/* Personnalisation du fond de la colonne */}
+          <div className="space-y-2 pt-1 border-t theme-border">
+            <div className="flex items-center justify-between">
+              <span className="theme-text-secondary font-medium flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-pink-400" />
+                Fond personnalisé :
+              </span>
+              {column.backgroundColor && (
+                <button
+                  onClick={() => updateColumn(column.id, { backgroundColor: undefined })}
+                  className="flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 font-medium transition-colors"
+                  title="Rétablir le fond par défaut"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Par défaut
+                </button>
+              )}
+            </div>
+
+            {/* Teintes liées au réseau */}
+            <div>
+              <span className="text-[10px] theme-text-secondary block mb-1">
+                Teintes {column.platform.toUpperCase()} :
+              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {currentTints.map((tint) => {
+                  const isSelected = column.backgroundColor?.toLowerCase() === tint.bg.toLowerCase();
+                  return (
+                    <button
+                      key={tint.bg}
+                      onClick={() => updateColumn(column.id, { backgroundColor: tint.bg })}
+                      className={`group relative flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium border transition-all ${
+                        isSelected
+                          ? 'border-white text-white font-bold ring-2 ring-white/30 scale-105'
+                          : 'border-white/10 text-white/80 hover:border-white/40'
+                      }`}
+                      style={{ backgroundColor: tint.bg }}
+                      title={tint.label}
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full border border-white/30 flex-shrink-0" style={{ backgroundColor: tint.bg }} />
+                      <span className="truncate max-w-[90px]">{tint.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Choix de couleur libre (color picker natif + code hex) */}
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <span className="text-[10px] theme-text-secondary">Couleur libre :</span>
+              <div className="flex items-center gap-2">
+                <label className="relative cursor-pointer flex items-center gap-1.5 px-2 py-0.5 rounded-md border theme-border theme-bg-column hover:theme-bg-surface transition-colors">
+                  <input
+                    type="color"
+                    value={column.backgroundColor || '#0f172a'}
+                    onChange={(e) => updateColumn(column.id, { backgroundColor: e.target.value })}
+                    className="w-4 h-4 rounded cursor-pointer border-0 p-0 bg-transparent"
+                  />
+                  <span className="text-[11px] font-mono theme-text-primary">
+                    {column.backgroundColor || 'Par défaut'}
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
           <div className="relative">
             <Filter className="w-3.5 h-3.5 theme-text-secondary absolute left-2.5 top-2.5" />
             <input
@@ -490,9 +765,10 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
         </div>
       )}
 
-      {/* Zone de contenu scrollable */}
+      {/* Zone de contenu scrollable avec détection molette/scroll infini */}
       <div 
         ref={scrollContainerRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto overflow-x-hidden divide-y divide-[#38444d]/20 select-text"
       >
         {isLoading && posts.length === 0 && (
@@ -520,7 +796,7 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
               onClick={() => loadFeed(true)}
               className="self-start px-3 py-1 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors font-semibold"
             >
-              Réessayer
+              {t('column.retry')}
             </button>
           </div>
         )}
@@ -547,6 +823,50 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
         {filteredPosts.map((post) => (
           <PostCard key={post.id} post={post} />
         ))}
+
+        {/* Pied de colonne : Bouton "+ Afficher plus de posts" et indicateur de chargement au scroll */}
+        {filteredPosts.length > 0 && (
+          <div className="p-4 flex flex-col items-center justify-center border-t theme-border-subtle bg-black/10 dark:bg-white/[0.02]">
+            {isLoadingMore ? (
+              <div className="flex items-center gap-2 text-xs font-medium text-[#1d9bf0] py-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>{t('column.loadingMore')}</span>
+              </div>
+            ) : hasMore ? (
+              <div className="w-full flex flex-col items-center gap-2">
+                <button
+                  onClick={() => loadMorePosts(false)}
+                  className="w-full py-2.5 px-4 rounded-xl border theme-border hover:border-[#1d9bf0]/50 theme-bg-surface hover:theme-bg-card-hover font-semibold text-xs theme-text-primary hover:text-[#1d9bf0] transition-all duration-150 flex items-center justify-center gap-2 shadow-sm cursor-pointer group"
+                  title="Afficher la suite des publications"
+                >
+                  <Plus className="w-4 h-4 text-[#1d9bf0] group-hover:scale-125 transition-transform" />
+                  <span>{t('column.loadMore')}</span>
+                </button>
+                <span className="text-[10px] theme-text-secondary flex items-center gap-1 opacity-75">
+                  <ArrowDown className="w-3 h-3 text-[#1d9bf0]" />
+                  <span>Ou scrollez vers le bas pour charger automatiquement</span>
+                </span>
+              </div>
+            ) : (
+              <div className="w-full flex flex-col items-center gap-1.5 py-1">
+                <span className="text-[11px] theme-text-secondary">
+                  {loadMoreMessage || `${t('column.noMorePosts')} (${filteredPosts.length} posts)`}
+                </span>
+                <button
+                  onClick={() => {
+                    setHasMore(true);
+                    loadMorePosts(true);
+                  }}
+                  className="py-1 px-3 rounded-lg border theme-border hover:border-[#1d9bf0]/50 theme-bg-surface text-[11px] font-medium theme-text-secondary hover:text-[#1d9bf0] transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Forcer la récupération de nouvelles publications"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>Vérifier de nouvelles publications</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

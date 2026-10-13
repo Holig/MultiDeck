@@ -1,4 +1,4 @@
-export type Platform = 'twitter' | 'youtube' | 'tiktok' | 'instagram';
+export type Platform = 'twitter' | 'youtube' | 'tiktok' | 'instagram' | 'bluesky' | 'threads' | 'reddit';
 
 export type PostType = 'tweet' | 'video' | 'short' | 'reel' | 'post' | 'tiktok';
 
@@ -60,6 +60,12 @@ export interface SocialPost {
     name: string;
     username?: string;
   };
+  replyTo?: {
+    id: string;
+    author?: SocialAuthor;
+    text?: string;
+  };
+  uri?: string; // URI AT Protocol (ex: at://did:.../app.bsky.feed.post/...)
 }
 
 export interface FeedResponse {
@@ -69,6 +75,15 @@ export interface FeedResponse {
   cachedAt?: string;
   message?: string;
   nextCursor?: string;
+}
+
+export interface ThreadResponse {
+  platform: Platform;
+  focusedPost: SocialPost;
+  ancestors: SocialPost[];
+  replies: SocialPost[];
+  source: 'live' | 'cache' | 'demo';
+  message?: string;
 }
 
 export interface PlatformAuthStatus {
@@ -90,6 +105,9 @@ export interface SystemStatus {
     hasApiKey: boolean;
     channelConnected?: boolean;
   };
+  bluesky?: PlatformAuthStatus;
+  threads?: PlatformAuthStatus;
+  reddit?: PlatformAuthStatus;
 }
 
 export type ColumnContentType = 'home' | 'search' | 'user' | 'shorts' | 'trending' | 'list';

@@ -1,4 +1,4 @@
-import { SystemStatus, FeedResponse, Platform, BrowserEngine, FeedMode } from '../types';
+import { SystemStatus, FeedResponse, Platform, BrowserEngine, FeedMode, ThreadResponse } from '../types';
 
 const API_BASE = '/api';
 
@@ -79,22 +79,37 @@ export const api = {
   },
 
   // Récupération de flux par compte / créateur
-  getUserFeed: async (platform: Platform, username: string, refresh = false): Promise<FeedResponse> => {
-    const res = await fetch(`${API_BASE}/feed/${platform}/user?id=${encodeURIComponent(username)}&refresh=${refresh}`);
+  getUserFeed: async (platform: Platform, username: string, refresh = false, cursor?: string): Promise<FeedResponse> => {
+    let url = `${API_BASE}/feed/${platform}/user?id=${encodeURIComponent(username)}&refresh=${refresh}`;
+    if (cursor) {
+      url += `&cursor=${encodeURIComponent(cursor)}`;
+    }
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`Erreur lors du chargement des posts de ${username}`);
     return res.json();
   },
 
   // Recherche ou Hashtag
-  getSearchFeed: async (platform: Platform, query: string, refresh = false): Promise<FeedResponse> => {
-    const res = await fetch(`${API_BASE}/feed/${platform}/search?q=${encodeURIComponent(query)}&refresh=${refresh}`);
+  getSearchFeed: async (platform: Platform, query: string, refresh = false, cursor?: string): Promise<FeedResponse> => {
+    let url = `${API_BASE}/feed/${platform}/search?q=${encodeURIComponent(query)}&refresh=${refresh}`;
+    if (cursor) {
+      url += `&cursor=${encodeURIComponent(cursor)}`;
+    }
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`Erreur lors de la recherche pour ${query}`);
     return res.json();
   },
 
   // Fil d'actualité principal / tendances (Pour vous, Abonnements récents, Abonnements populaires)
-  getHomeFeed: async (platform: Platform, mode: FeedMode = 'for_you', refresh = false): Promise<FeedResponse> => {
-    const res = await fetch(`${API_BASE}/feed/${platform}/home?mode=${encodeURIComponent(mode)}&refresh=${refresh}`);
+  getHomeFeed: async (platform: Platform, mode: FeedMode = 'for_you', refresh = false, username?: string, cursor?: string): Promise<FeedResponse> => {
+    let url = `${API_BASE}/feed/${platform}/home?mode=${encodeURIComponent(mode)}&refresh=${refresh}`;
+    if (username) {
+      url += `&username=${encodeURIComponent(username)}`;
+    }
+    if (cursor) {
+      url += `&cursor=${encodeURIComponent(cursor)}`;
+    }
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`Erreur lors du chargement du fil`);
     return res.json();
   },
@@ -113,6 +128,16 @@ export const api = {
     return res.json();
   },
 
+  // Fil de discussion / Conversation complet (Thread Viewer)
+  getThread: async (platform: Platform, idOrUrl: string, refresh = false): Promise<ThreadResponse> => {
+    const res = await fetch(`${API_BASE}/feed/${platform}/thread?id=${encodeURIComponent(idOrUrl)}&refresh=${refresh}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Impossible de charger la conversation');
+    }
+    return res.json();
+  },
+
   // Informations d'espace disque et de stockage
   getStorageInfo: async (): Promise<{ totalBytes: number; totalMb: string; details: Record<string, string> }> => {
     const res = await fetch(`${API_BASE}/feed/storage-info`);
@@ -124,6 +149,30 @@ export const api = {
   clearCache: async (): Promise<{ success: boolean; freedMb?: string; message: string }> => {
     const res = await fetch(`${API_BASE}/feed/clear-cache`, { method: 'POST' });
     if (!res.ok) throw new Error('Erreur lors de la purge du cache');
+    return res.json();
+  },
+
+  // Exécution d'une action d'interaction (Like, Repost, Réponse)
+  postAction: async (
+    platform: Platform,
+    postId: string,
+    action: 'like' | 'repost' | 'reply',
+    data: { value?: any; postUrl?: string; text?: string } = {}
+  ): Promise<{ success: boolean; intentUrl?: string; message?: string }> => {
+    const res = await fetch(`${API_BASE}/feed/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform,
+        postId,
+        action,
+        ...data,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Erreur lors de l’action');
+    }
     return res.json();
   },
 };

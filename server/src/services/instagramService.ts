@@ -316,16 +316,21 @@ export class InstagramService {
             : 'https://www.instagram.com/?variant=home';
 
           await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
-          await page.waitForTimeout(3000);
+          // Laisser le temps aux requêtes initiales GraphQL et aux médias de s'initialiser
+          await page.waitForTimeout(4000);
 
-          // Défilement fluide pour charger plusieurs publications
-          for (let i = 0; i < 4; i++) {
-            await page.evaluate(() => window.scrollBy(0, 1000));
-            await page.waitForTimeout(1000);
+          // Défilement fluide pour forcer le chargement de toutes les images et des posters de vidéos
+          for (let i = 0; i < 5; i++) {
+            await page.evaluate(() => window.scrollBy(0, 800));
+            await page.waitForTimeout(1200);
           }
 
+          // Remonter légèrement pour s'assurer que les premiers articles dans le DOM ont leurs images/avatars chargés
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.waitForTimeout(1000);
+
           // Extraction DOM si GraphQL est différé ou incomplet
-          if (capturedTimeline.length < 10) {
+          if (capturedTimeline.length < 15) {
             const domFeed = await this.extractTimelineFromDOM(page);
             for (const dp of domFeed) {
               if (!capturedTimeline.some((p) => p.id === dp.id || (p.postUrl && dp.postUrl && p.postUrl === dp.postUrl))) {
@@ -415,7 +420,7 @@ export class InstagramService {
     const user = node.user || node.owner || node.caption?.user || {};
     const username = user.username || user.screen_name || '';
     const fullName = user.full_name || user.name || (username ? `@${username}` : 'Instagram');
-    const avatarUrl = user.profile_pic_url_hd || user.profile_pic_url || (username ? `https://unavatar.io/instagram/${username}` : 'https://abs.twimg.com/sticky/default_profile_images/default_profile_bigger.png');
+    const avatarUrl = user.profile_pic_url_hd || user.profile_pic_url || (username ? `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=e1306c&color=fff&bold=true` : 'https://abs.twimg.com/sticky/default_profile_images/default_profile_bigger.png');
     const shortcode = node.shortcode || node.code || node.id;
     const caption = node.edge_media_to_caption?.edges?.[0]?.node?.text || node.caption?.text || node.title || '';
 
@@ -454,11 +459,37 @@ export class InstagramService {
         articles.forEach((art, idx) => {
           try {
             // 1. Détection de l'auteur et de l'avatar
-            const header = art.querySelector('header');
-            const avatarImg = (header ? header.querySelector('img') : null) || (art.querySelector('img[alt*="profil"], img[alt*="profile"]') as HTMLImageElement);
-            let avatarUrl = avatarImg ? avatarImg.src : '';
+            const header = art.querySelector('header') || art.querySelector('div[role="button"]:has(img)');
+            const allArticleImgs = Array.from(art.querySelectorAll('img'));
+            
+            // Trouver l'image d'avatar : dans le header, ou image avec alt contenant profile/profil, ou première petite image carrée (<70px)
+            let avatarImg = (header ? header.querySelector('img') : null) ||
+                            allArticleImgs.find(img => {
+                              const alt = (img.alt || '').toLowerCase();
+                              if (alt.includes('profil') || alt.includes('profile')) return true;
+                              const rect = img.getBoundingClientRect();
+                              return rect.width > 0 && rect.width <= 70 && rect.height > 0 && rect.height <= 70;
+                            }) as HTMLImageElement || null;
+
+            let avatarUrl = avatarImg ? (avatarImg.src || avatarImg.currentSrc || '') : '';
             let authorUsername = '';
             let authorName = '';
+
+            // Si l'avatar est dans un élément avec style background-image
+            if (!avatarUrl) {
+              const bgAvatarCandidates = Array.from(art.querySelectorAll('span[style*="background-image"], div[style*="background-image"], canvas + div[style*="background-image"]'));
+              for (const el of bgAvatarCandidates) {
+                const rect = el.getBoundingClientRect();
+                if (rect.width <= 75) {
+                  const style = el.getAttribute('style') || '';
+                  const m = style.match(/background-image:\s*url\(["']?([^"']+)["']?\)/i);
+                  if (m && m[1] && m[1].startsWith('http')) {
+                    avatarUrl = m[1];
+                    break;
+                  }
+                }
+              }
+            }
 
             // Extraction du username depuis l'alt de l'avatar
             if (avatarImg && avatarImg.alt) {
@@ -470,90 +501,97 @@ export class InstagramService {
               else if (m3 && m3[1]) authorUsername = m3[1];
             }
 
-            // Extraction depuis les liens du header
-            if (!authorUsername && header) {
-              const links = Array.from(header.querySelectorAll('a[href]'));
-              for (const link of links) {
-                const href = link.getAttribute('href') || '';
+            // Extraction du nom / username depuis les liens de l'article (hors liens de post /p/ ou /reel/)
+            if (!authorUsername) {
+              const profileLinks = Array.from(art.querySelectorAll('a[href]')).filter(l => {
+                const href = l.getAttribute('href') || '';
                 const clean = href.split('?')[0].replace(/^\/|\/$/g, '');
-                if (clean && !['explore', 'reels', 'stories', 'p', 'reel', 'direct', 'home', 'accounts', 'legal'].includes(clean) && !clean.includes('/')) {
-                  authorUsername = clean;
-                  const text = (link.textContent || '').trim();
-                  if (text && text !== authorUsername) authorName = text;
-                  break;
-                }
+                return clean && !['explore', 'reels', 'stories', 'p', 'reel', 'direct', 'home', 'accounts', 'legal'].includes(clean) && !clean.includes('/');
+              });
+
+              if (profileLinks.length > 0) {
+                const firstLink = profileLinks[0];
+                const href = firstLink.getAttribute('href') || '';
+                authorUsername = href.split('?')[0].replace(/^\/|\/$/g, '');
+                const t = (firstLink.textContent || '').trim();
+                if (t && t !== authorUsername) authorName = t;
               }
             }
 
-            if (!authorUsername) {
-              const headerText = header ? header.textContent || '' : '';
+            if (!authorUsername && header) {
+              const headerText = header.textContent || '';
               const match = headerText.match(/([A-Za-z0-9_.]+)/);
               if (match && match[1] && !['explore', 'reels'].includes(match[1])) authorUsername = match[1];
-            }
-
-            if (authorUsername && !avatarUrl) {
-              avatarUrl = `https://unavatar.io/instagram/${authorUsername}`;
-            } else if (!avatarUrl) {
-              avatarUrl = 'https://abs.twimg.com/sticky/default_profile_images/default_profile_bigger.png';
             }
 
             if (!authorUsername) authorUsername = 'instagram_creator';
             if (!authorName) authorName = `@${authorUsername}`;
 
+            // Si avatar non trouvé ou URL invalide, fallback SVG propre Instagram
+            if (!avatarUrl || avatarUrl.includes('default_profile')) {
+              avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(authorUsername)}&background=e1306c&color=fff&bold=true`;
+            }
+
             // 2. Détection média (Images & Vidéos / Reels)
             let displayUrl = '';
             let isVideo = false;
 
-            // A. Chercher dans les images hors-header
-            const allImgs = Array.from(art.querySelectorAll('img')).filter(img => {
-              if (header && header.contains(img)) return false;
-              const src = img.src || '';
-              const alt = (img.alt || '').toLowerCase();
-              if (alt.includes('profil') || alt.includes('profile')) return false;
-              const rect = img.getBoundingClientRect();
-              if (rect.width > 0 && rect.width < 100) return false;
-              return src.startsWith('http') || Boolean(img.srcset);
-            });
-
-            for (const img of allImgs) {
-              if (img.srcset) {
-                const candidates = img.srcset.split(',').map(s => {
-                  const parts = s.trim().split(/\s+/);
-                  const w = parts[1] ? parseInt(parts[1].replace('w', ''), 10) : 0;
-                  return { url: parts[0], width: w };
-                });
-                candidates.sort((a, b) => b.width - a.width);
-                if (candidates.length > 0 && candidates[0].url) {
-                  displayUrl = candidates[0].url;
-                  break;
-                }
-              }
-              if (img.src && !img.src.includes('profile_images') && !img.src.includes('150x150')) {
-                displayUrl = img.src;
-                break;
-              }
-            }
-
-            // B. Chercher dans les balises vidéo / Reel
+            // A. Chercher dans les vidéos / Reels
             const videoEl = art.querySelector('video') as HTMLVideoElement;
             if (videoEl) {
               isVideo = true;
               const poster = videoEl.poster || videoEl.getAttribute('poster') || '';
               if (poster && poster.startsWith('http')) {
                 displayUrl = poster;
+              } else if (videoEl.src && videoEl.src.startsWith('http')) {
+                displayUrl = videoEl.src;
               }
             }
 
-            // C. Chercher dans les styles background-image
+            // B. Si pas de poster ou pas de vidéo, chercher dans les images de contenu (taille > 150px)
+            if (!displayUrl) {
+              const contentImgs = allArticleImgs.filter(img => {
+                if (img === avatarImg) return false;
+                const alt = (img.alt || '').toLowerCase();
+                if (alt.includes('profil') || alt.includes('profile')) return false;
+                const src = img.currentSrc || img.src || '';
+                if (src.includes('profile_images') || src.includes('150x150')) return false;
+                return src.startsWith('http') || Boolean(img.srcset);
+              });
+
+              for (const img of contentImgs) {
+                if (img.srcset) {
+                  const candidates = img.srcset.split(',').map(s => {
+                    const parts = s.trim().split(/\s+/);
+                    const w = parts[1] ? parseInt(parts[1].replace('w', ''), 10) : 0;
+                    return { url: parts[0], width: w };
+                  });
+                  candidates.sort((a, b) => b.width - a.width);
+                  if (candidates.length > 0 && candidates[0].url) {
+                    displayUrl = candidates[0].url;
+                    break;
+                  }
+                }
+                const src = img.currentSrc || img.src;
+                if (src && src.startsWith('http')) {
+                  displayUrl = src;
+                  break;
+                }
+              }
+            }
+
+            // C. Chercher dans les styles background-image des conteneurs média (taille > 150px)
             if (!displayUrl) {
               const bgElements = Array.from(art.querySelectorAll('div[style*="background-image"], span[style*="background-image"]'));
               for (const el of bgElements) {
-                if (header && header.contains(el)) continue;
-                const style = el.getAttribute('style') || '';
-                const match = style.match(/background-image:\s*url\(["']?([^"']+)["']?\)/i);
-                if (match && match[1] && match[1].startsWith('http') && !match[1].includes('profile_images')) {
-                  displayUrl = match[1];
-                  break;
+                const rect = el.getBoundingClientRect();
+                if (rect.width > 120 || rect.height > 120) {
+                  const style = el.getAttribute('style') || '';
+                  const match = style.match(/background-image:\s*url\(["']?([^"']+)["']?\)/i);
+                  if (match && match[1] && match[1].startsWith('http') && !match[1].includes('profile_images')) {
+                    displayUrl = match[1];
+                    break;
+                  }
                 }
               }
             }
@@ -572,11 +610,10 @@ export class InstagramService {
               }
             });
 
-            // 4. Extraction propre de la légende (Texte du post)
+            // 4. Extraction complète de la légende (Texte du post)
             let caption = '';
 
-            // Trouver les spans en excluant le header, les liens audio/musique et les boutons
-            const nonHeaderSpans = Array.from(art.querySelectorAll('span, div[dir="auto"]')).filter(el => {
+            const captionContainers = Array.from(art.querySelectorAll('h1, span[dir="auto"], div[dir="auto"], div > span')).filter(el => {
               if (header && header.contains(el)) return false;
               if (el.closest('header')) return false;
               if (el.closest('a[href*="/audio/"], a[href*="/music/"], a[href*="/explore/"]')) return false;
@@ -597,40 +634,39 @@ export class InstagramService {
               /^[0-9]+$/,
             ];
 
-            for (const el of nonHeaderSpans) {
+            for (const el of captionContainers) {
               let t = (el.textContent || '').trim();
               if (!t || t.length < 2) continue;
-
               if (rejectPatterns.some(p => p.test(t))) continue;
 
-              // Nettoyer le préfixe d'auteur (ex: "nbaVerified", "photoshop Verified")
               const authorPrefixRegex = new RegExp(`^(${authorUsername}|${authorName}|[A-Za-z0-9_.]+)\\s*(Verified|Vérifié)?\\s*`, 'i');
               if (authorPrefixRegex.test(t)) {
                 t = t.replace(authorPrefixRegex, '').trim();
               }
 
-              // Nettoyer le suffixe "... plus"
               t = t.replace(/(\.\.\.|…)\s*(plus|more)$/i, '').trim();
 
               if (t && t.length > 2 && !rejectPatterns.some(p => p.test(t))) {
-                caption = t;
-                break;
+                if (!caption || t.length > caption.length) {
+                  caption = t;
+                }
               }
             }
 
-            // Si aucune légende dans les spans, chercher dans l'alt de l'image
-            if (!caption) {
-              for (const img of allImgs) {
-                if (img.alt && img.alt.length > 5 && !img.alt.toLowerCase().includes('profil')) {
-                  let altText = img.alt;
-                  const quoteMatch = altText.match(/[:"]\s*([^"]{5,})/);
-                  if (quoteMatch && quoteMatch[1]) {
-                    caption = quoteMatch[1].trim();
-                  } else {
-                    caption = altText.replace(/^Photo (de|partagée par) [^:]+:\s*/i, '').trim();
-                  }
-                  break;
-                }
+            // Si aucune légende dans les spans ou trop courte (< 15 car.), vérifier l'attribut alt de l'image
+            const altCandidates = allArticleImgs
+              .filter(img => img !== avatarImg)
+              .map(img => (img.getAttribute('alt') || '').trim())
+              .filter(alt => alt.length > 5 && !alt.toLowerCase().includes('profil') && !alt.toLowerCase().includes('profile'));
+
+            for (const altText of altCandidates) {
+              let cleanAlt = altText.replace(/^Photo (de|partagée par) [^:]+:\s*/i, '').trim();
+              const quoteMatch = cleanAlt.match(/[:"]\s*([^"]{8,})/);
+              if (quoteMatch && quoteMatch[1]) {
+                cleanAlt = quoteMatch[1].trim();
+              }
+              if (cleanAlt && (!caption || cleanAlt.length > caption.length)) {
+                caption = cleanAlt;
               }
             }
 
@@ -648,7 +684,7 @@ export class InstagramService {
                   name: authorName,
                   username: authorUsername,
                   avatarUrl,
-                  verified: !!(header && (header.querySelector('svg[aria-label*="Vérifié"], svg[aria-label*="Verified"]') || header.querySelector('span[title*="Vérifié"]'))),
+                  verified: !!(art.querySelector('svg[aria-label*="Vérifié"], svg[aria-label*="Verified"]') || art.querySelector('span[title*="Vérifié"]')),
                 },
                 text: caption,
                 createdAt,

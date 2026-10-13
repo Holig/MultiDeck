@@ -14,18 +14,121 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
-  Flame
+  Flame,
+  Globe
 } from 'lucide-react';
 import { SocialPost } from '../../types';
 import { useDeck } from '../../context/DeckContext';
+import { api } from '../../services/api';
+import { translateText } from '../../i18n/translations';
 
 interface PostCardProps {
   post: SocialPost;
 }
 
 export const PostCard: React.FC<PostCardProps> = ({ post }) => {
-  const { setActiveMediaPreview } = useDeck();
+  const { setActiveMediaPreview, setActiveThreadPost, language, autoTranslatePosts, t } = useDeck();
   const [currentMediaIdx, setCurrentMediaIdx] = React.useState(0);
+
+  // Traduction automatique / manuelle
+  const [translatedText, setTranslatedText] = React.useState<string | null>(null);
+  const [isTranslating, setIsTranslating] = React.useState(false);
+  const [showOriginal, setShowOriginal] = React.useState(false);
+
+  React.useEffect(() => {
+    // Si l'option Traduction automatique est activée dans les paramètres
+    if (autoTranslatePosts && post.text && !translatedText && !isTranslating) {
+      let isMounted = true;
+      setIsTranslating(true);
+      translateText(post.text, language)
+        .then((res) => {
+          if (isMounted) {
+            if (!res.isSameLanguage && res.translatedText && res.translatedText !== post.text && !res.translatedText.includes('QUERY LENGTH LIMIT')) {
+              setTranslatedText(res.translatedText);
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (isMounted) setIsTranslating(false);
+        });
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [autoTranslatePosts, post.text, language]);
+
+  const handleTranslateToggle = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (translatedText) {
+      setShowOriginal(!showOriginal);
+      return;
+    }
+    if (!post.text || isTranslating) return;
+    try {
+      setIsTranslating(true);
+      const res = await translateText(post.text, language);
+      if (res && !res.isSameLanguage && res.translatedText !== post.text && !res.translatedText.includes('QUERY LENGTH LIMIT')) {
+        setTranslatedText(res.translatedText);
+        setShowOriginal(false);
+      }
+    } catch {
+      // Ignorer
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  // États d'interactions directes optimistes
+  const [isLiked, setIsLiked] = React.useState(false);
+  const [likesCount, setLikesCount] = React.useState(post.stats.likes || 0);
+  const [isLikeAnimating, setIsLikeAnimating] = React.useState(false);
+
+  const [isReposted, setIsReposted] = React.useState(false);
+  const [repostsCount, setRepostsCount] = React.useState(post.stats.sharesOrRetweets || 0);
+  const [isRepostAnimating, setIsRepostAnimating] = React.useState(false);
+
+  const handleLike = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nextState = !isLiked;
+    setIsLiked(nextState);
+    setLikesCount((prev) => Math.max(0, prev + (nextState ? 1 : -1)));
+    setIsLikeAnimating(true);
+    setTimeout(() => setIsLikeAnimating(false), 300);
+
+    try {
+      const res = await api.postAction(post.platform, post.id, 'like', {
+        value: nextState,
+        postUrl: post.postUrl,
+      });
+      if (res.intentUrl && post.platform === 'twitter') {
+        window.open(res.intentUrl, '_blank', 'width=550,height=420');
+      }
+    } catch (err) {
+      console.error('[PostCard] Erreur like :', err);
+    }
+  };
+
+  const handleRepost = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const nextState = !isReposted;
+    setIsReposted(nextState);
+    setRepostsCount((prev) => Math.max(0, prev + (nextState ? 1 : -1)));
+    setIsRepostAnimating(true);
+    setTimeout(() => setIsRepostAnimating(false), 300);
+
+    try {
+      const res = await api.postAction(post.platform, post.id, 'repost', {
+        value: nextState,
+        postUrl: post.postUrl,
+      });
+      if (res.intentUrl && post.platform === 'twitter') {
+        window.open(res.intentUrl, '_blank', 'width=550,height=420');
+      }
+    } catch (err) {
+      console.error('[PostCard] Erreur repost :', err);
+    }
+  };
 
   const mediaList = post.media || [];
   const hasMultipleMedia = mediaList.length > 1;
@@ -105,6 +208,24 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
             <Instagram className="w-3 h-3" /> Instagram {post.type === 'reel' ? 'Reel' : ''}
           </span>
         );
+      case 'bluesky':
+        return (
+          <span className="flex items-center gap-1 text-[10px] font-bold text-[#0285ff] bg-[#0285ff]/15 px-1.5 py-0.5 rounded shadow-sm">
+            🦋 Bluesky
+          </span>
+        );
+      case 'threads':
+        return (
+          <span className="flex items-center gap-1 text-[10px] font-bold text-white bg-black/75 dark:bg-white/20 px-1.5 py-0.5 rounded shadow-sm border border-white/10">
+            🧵 Threads
+          </span>
+        );
+      case 'reddit':
+        return (
+          <span className="flex items-center gap-1 text-[10px] font-bold text-[#ff4500] bg-[#ff4500]/15 px-1.5 py-0.5 rounded shadow-sm border border-[#ff4500]/30">
+            🤖 Reddit
+          </span>
+        );
       case 'twitter':
       default:
         return (
@@ -156,6 +277,23 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
         </div>
       )}
 
+      {/* Indicateur En réponse à (cliquable pour ouvrir la discussion) */}
+      {post.replyTo && (
+        <div 
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveThreadPost(post);
+          }}
+          className="flex items-center gap-1.5 text-xs font-medium theme-text-secondary mb-1.5 pl-3 hover:text-[#0285ff] cursor-pointer group/rep"
+          title="Ouvrir la discussion"
+        >
+          <MessageCircle className="w-3 h-3 text-[#0285ff] flex-shrink-0" />
+          <span className="truncate">
+            En réponse à <strong className="group-hover/rep:underline">@{post.replyTo.author?.username}</strong>
+          </span>
+        </div>
+      )}
+
       {/* En-tête de la publication */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -165,8 +303,9 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
             referrerPolicy="no-referrer"
             onError={(e) => {
               const target = e.target as HTMLImageElement;
-              const nameOrUser = post.author.name || post.author.username || 'X';
-              const cleanFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(nameOrUser)}&background=1d9bf0&color=fff&bold=true`;
+              const nameOrUser = post.author.name || post.author.username || 'User';
+              const bgColor = post.platform === 'instagram' ? 'e1306c' : (post.platform === 'youtube' ? 'ef4444' : (post.platform === 'reddit' ? 'ff4500' : '1d9bf0'));
+              const cleanFallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(nameOrUser)}&background=${bgColor}&color=fff&bold=true`;
               if (target.src !== cleanFallback) {
                 target.src = cleanFallback;
               }
@@ -203,21 +342,51 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
         </div>
       </div>
 
-      {/* Titre spécifique YouTube */}
+      {/* Titre spécifique YouTube ou Reddit */}
       {post.title && (
         <h3 
-          onClick={() => setActiveMediaPreview({ post })}
+          onClick={() => {
+            if (post.platform === 'reddit') {
+              setActiveThreadPost(post);
+            } else {
+              setActiveMediaPreview({ post });
+            }
+          }}
           className="text-sm font-semibold theme-text-primary mb-1.5 line-clamp-2 leading-snug cursor-pointer hover:text-[#1d9bf0] transition-colors"
         >
           {post.title}
         </h3>
       )}
 
-      {/* Texte / Contenu intégral du Tweet ou Post Instagram */}
+      {/* Texte / Contenu intégral du Tweet ou Post */}
       {post.text && (
-        <p className="text-xs theme-text-primary whitespace-pre-wrap leading-relaxed break-words my-1.5 selection:bg-[#1d9bf0]/30">
-          {renderFormattedText(post.text)}
-        </p>
+        <div className="my-1.5">
+          <p className="text-xs theme-text-primary whitespace-pre-wrap leading-relaxed break-words selection:bg-[#1d9bf0]/30">
+            {renderFormattedText(translatedText && !showOriginal ? translatedText : post.text)}
+          </p>
+
+          {/* Bouton de traduction rapide (uniquement si une traduction différente et valide est disponible) */}
+          {translatedText && translatedText !== post.text && !translatedText.includes('QUERY LENGTH LIMIT') && (
+            <button
+              onClick={handleTranslateToggle}
+              className="text-[11px] theme-text-secondary hover:text-[#1d9bf0] flex items-center gap-1 mt-1 transition-colors group/tr cursor-pointer"
+            >
+              <Globe className="w-3 h-3 group-hover/tr:scale-110 text-[#1d9bf0] transition-transform" />
+              <span>
+                {isTranslating
+                  ? t('post.translating')
+                  : showOriginal
+                  ? t('post.translate')
+                  : t('post.showOriginal')}
+              </span>
+              {!showOriginal && (
+                <span className="text-[9px] px-1 rounded bg-[#1d9bf0]/15 text-[#1d9bf0] font-semibold">
+                  IA
+                </span>
+              )}
+            </button>
+          )}
+        </div>
       )}
 
       {/* Carte Média Spécifique / Carrousel */}
@@ -370,31 +539,60 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
         </div>
       )}
 
-      {/* Barre de métriques et d'interactions */}
+      {/* Barre de métriques et d'interactions directes */}
       <div className="mt-3 flex items-center justify-between theme-text-secondary text-xs pt-1 border-t theme-border-subtle">
-        {/* Likes */}
-        <div className="flex items-center gap-1.5 hover:text-pink-500 transition-colors cursor-pointer">
-          <Heart className="w-3.5 h-3.5" />
-          <span>{formatNumber(post.stats.likes) || '0'}</span>
-        </div>
+        {/* Likes / Upvote interactif */}
+        <button
+          onClick={handleLike}
+          className={`flex items-center gap-1.5 transition-all duration-150 group/like p-1 -m-1 rounded-md hover:bg-pink-500/10 ${
+            isLiked 
+              ? (post.platform === 'reddit' ? 'text-[#ff4500]' : 'text-pink-500 font-semibold')
+              : 'hover:text-pink-500'
+          }`}
+          title={isLiked ? t('post.unlike') : (post.platform === 'reddit' ? t('post.upvote') : t('post.like'))}
+        >
+          <Heart 
+            className={`w-3.5 h-3.5 transition-transform duration-150 ${
+              isLikeAnimating ? 'scale-125' : 'group-hover/like:scale-110'
+            } ${isLiked ? 'fill-current' : ''}`} 
+          />
+          <span>{formatNumber(likesCount) || '0'}</span>
+        </button>
 
-        {/* Commentaires / Réponses */}
-        {post.stats.comments !== undefined && (
-          <div className="flex items-center gap-1.5 hover:text-[#1d9bf0] transition-colors cursor-pointer">
-            <MessageCircle className="w-3.5 h-3.5" />
-            <span>{formatNumber(post.stats.comments)}</span>
-          </div>
+        {/* Commentaires / Réponses (Ouvre la discussion complète + boîte de réponse) */}
+        {(post.stats.comments !== undefined || post.platform === 'bluesky' || post.platform === 'twitter' || post.platform === 'threads' || post.platform === 'reddit') && (
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveThreadPost(post);
+            }}
+            className="flex items-center gap-1.5 hover:text-[#1d9bf0] transition-colors p-1 -m-1 rounded-md hover:bg-[#1d9bf0]/10 group/cmt"
+            title={t('post.thread')}
+          >
+            <MessageCircle className="w-3.5 h-3.5 group-hover/cmt:scale-110 transition-transform" />
+            <span>{formatNumber(post.stats.comments) || '0'}</span>
+          </button>
         )}
 
-        {/* Partages / Retweets */}
-        {post.stats.sharesOrRetweets !== undefined && (
-          <div className="flex items-center gap-1.5 hover:text-emerald-400 transition-colors cursor-pointer">
-            <Repeat2 className="w-3.5 h-3.5" />
-            <span>{formatNumber(post.stats.sharesOrRetweets)}</span>
-          </div>
+        {/* Partages / Retweets / Repost interactif */}
+        {(post.stats.sharesOrRetweets !== undefined || post.platform === 'twitter' || post.platform === 'threads' || post.platform === 'bluesky') && (
+          <button 
+            onClick={handleRepost}
+            className={`flex items-center gap-1.5 transition-all duration-150 p-1 -m-1 rounded-md hover:bg-emerald-500/10 group/repost ${
+              isReposted ? 'text-emerald-400 font-semibold' : 'hover:text-emerald-400'
+            }`}
+            title={isReposted ? t('post.unrepost') : t('post.repost')}
+          >
+            <Repeat2 
+              className={`w-3.5 h-3.5 transition-transform duration-150 ${
+                isRepostAnimating ? 'scale-125' : 'group-hover/repost:scale-110'
+              }`} 
+            />
+            <span>{formatNumber(repostsCount) || '0'}</span>
+          </button>
         )}
 
-        {/* Vues */}
+        {/* Vues (si fournies) */}
         {post.stats.views !== undefined && (
           <div className="flex items-center gap-1.5 hover:text-white transition-colors cursor-default">
             <Eye className="w-3.5 h-3.5" />
@@ -402,15 +600,16 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
           </div>
         )}
 
-        {/* Bouton de copie / partage */}
+        {/* Bouton de copie / partage du lien */}
         <button
-          onClick={() => {
-            if (navigator.clipboard) {
+          onClick={(e) => {
+            e.stopPropagation();
+            if (navigator.clipboard && post.postUrl) {
               navigator.clipboard.writeText(post.postUrl);
             }
           }}
           className="p-1 rounded hover:text-white hover:bg-white/10 transition-colors"
-          title="Copier le lien"
+          title={t('post.copyLink')}
         >
           <Share2 className="w-3.5 h-3.5" />
         </button>

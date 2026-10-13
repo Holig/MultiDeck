@@ -1,9 +1,10 @@
 import { Page } from 'playwright';
 import { playwrightManager } from '../playwrightManager';
 import { cacheManager } from '../cacheManager';
-import { SocialPost, FeedResponse, SocialAuthor } from '../types';
+import { SocialPost, FeedResponse, SocialAuthor, ThreadResponse } from '../types';
 
 export class TwitterService {
+  private threadCache = new Map<string, { data: ThreadResponse; timestamp: number }>();
   private extractUserInfo(tweetObj: any): { name: string; username: string; avatarUrl: string; verified: boolean; id: string } {
     let name = '';
     let username = '';
@@ -100,6 +101,10 @@ export class TwitterService {
         };
         // Utiliser l'identifiant unique du repost pour la timeline
         parsedOrig.id = tweetObj.rest_id || legacy.id_str || `rt-${parsedOrig.id}`;
+        // Si le repost a son propre horodatage dans le legacy du tweet parent, l'utiliser pour respecter la chronologie du fil
+        if (legacy.created_at) {
+          parsedOrig.createdAt = new Date(legacy.created_at).toISOString();
+        }
         return parsedOrig;
       }
     }
@@ -193,7 +198,10 @@ export class TwitterService {
       }
     }
 
-    let cleanText = tweetObj.note_tweet?.note_tweet_results?.result?.text || legacy.full_text || '';
+    // Extraction exhaustive du texte (y compris les longs posts X / Twitter Blue "note_tweet")
+    const noteTweetData = tweetObj.note_tweet?.note_tweet_results?.result || tweetObj.note_tweet;
+    const fullNoteText = noteTweetData?.text || noteTweetData?.note_tweet_results?.result?.text;
+    let cleanText = fullNoteText || legacy.full_text || tweetObj.text || '';
     if (legacy.entities?.media) {
       for (const m of legacy.entities.media) {
         cleanText = cleanText.replace(m.url, '').trim();
@@ -206,6 +214,19 @@ export class TwitterService {
         cleanText = cleanText.replace(legacy.quoted_status_permalink.url, '').trim();
       }
       cleanText = cleanText.replace(/https:\/\/t\.co\/[A-Za-z0-9]+$/, '').trim();
+    }
+
+    let replyTo = undefined;
+    if (legacy.in_reply_to_status_id_str) {
+      replyTo = {
+        id: legacy.in_reply_to_status_id_str,
+        author: legacy.in_reply_to_screen_name ? {
+          id: legacy.in_reply_to_user_id_str || '',
+          name: `@${legacy.in_reply_to_screen_name}`,
+          username: legacy.in_reply_to_screen_name,
+          avatarUrl: '',
+        } : undefined,
+      };
     }
 
     return {
@@ -225,6 +246,7 @@ export class TwitterService {
       postUrl: `https://x.com/${author.username}/status/${tweetObj.rest_id || legacy.id_str}`,
       isLiked: legacy.favorited,
       quotedPost,
+      replyTo,
     };
   }
 
@@ -349,7 +371,15 @@ export class TwitterService {
             }
 
             const tweetTextEl = art.querySelector('div[data-testid="tweetText"]');
-            const text = tweetTextEl ? tweetTextEl.textContent || '' : '';
+            let text = '';
+            if (tweetTextEl) {
+              // Si un bouton "Afficher plus" / "Show more" est présent dans le conteneur du texte, on s'assure de prendre le contenu textuel total
+              const showMoreBtn = tweetTextEl.querySelector('[role="button"]') as HTMLElement | null;
+              if (showMoreBtn) {
+                showMoreBtn.click();
+              }
+              text = tweetTextEl.textContent || '';
+            }
 
             const mediaList: any[] = [];
             const photoImgs = art.querySelectorAll('div[data-testid="tweetPhoto"] img');
@@ -566,7 +596,13 @@ export class TwitterService {
             }
           }
 
-          await page.waitForTimeout(2000);
+          await page.waitForTimeout(1500);
+
+          // Défilement proactif pour capturer les vagues de tweets suivantes (pagination naturelle Playwright)
+          for (let s = 0; s < 3; s++) {
+            await page.evaluate(() => window.scrollBy(0, 1500));
+            await page.waitForTimeout(800);
+          }
 
           if (captured.length === 0) {
             captured.push(...(await this.extractFromDOM(page)));
@@ -990,6 +1026,118 @@ export class TwitterService {
     } catch (err: any) {
       console.error('[TwitterService] Erreur getListFeed :', err);
       return { platform: 'twitter', posts: [], source: 'live', message: err.message || 'Erreur lors du chargement de la liste X.' };
+    }
+  }
+
+  /**
+   * Récupère l'arborescence complète d'un tweet (parents, tweet central, réponses)
+   */
+  public async getPostThread(target: string, forceRefresh = false): Promise<ThreadResponse> {
+    const tweetId = target.includes('/status/') 
+      ? target.split('/status/')[1]?.split('?')[0]?.split('/')[0] 
+      : target.trim();
+
+    if (!tweetId) {
+      throw new Error('Identifiant de tweet manquant.');
+    }
+
+    const cacheKey = `twitter:thread:${tweetId}`;
+    if (!forceRefresh) {
+      const cached = this.threadCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < 60000) {
+        return { ...cached.data, source: 'cache' };
+      }
+    }
+
+    try {
+      const rawPosts = await playwrightManager.executeWithLock('twitter', async (ctx) => {
+        const page = await ctx.newPage();
+        const captured: SocialPost[] = [];
+
+        page.on('response', async (response) => {
+          try {
+            const url = response.url();
+            if (url.includes('/TweetDetail') || url.includes('/graphql/')) {
+              const contentType = response.headers()['content-type'] || '';
+              if (contentType.includes('application/json')) {
+                const json = await response.json();
+                captured.push(...this.extractTweetsFromGraphQLResponse(json));
+              }
+            }
+          } catch (e) {}
+        });
+
+        try {
+          const tweetUrl = `https://x.com/i/status/${tweetId}`;
+          await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+          
+          // Attente réactive dès que les tweets GraphQL sont capturés
+          for (let i = 0; i < 20; i++) {
+            if (captured.length > 0) break;
+            await page.waitForTimeout(100);
+          }
+
+          if (captured.length === 0) {
+            await page.waitForTimeout(800);
+            captured.push(...(await this.extractFromDOM(page)));
+          }
+        } finally {
+          await page.close();
+        }
+
+        // Déduplication
+        const map = new Map<string, SocialPost>();
+        for (const p of captured) {
+          if (!map.has(p.id)) map.set(p.id, p);
+        }
+        return Array.from(map.values());
+      });
+
+      // Trouver le tweet ciblé
+      let focusedPost = rawPosts.find((p) => p.id === tweetId);
+      if (!focusedPost && rawPosts.length > 0) {
+        // Si tweetId est partiel, prendre le premier
+        focusedPost = rawPosts[0];
+      }
+
+      if (!focusedPost) {
+        throw new Error('Tweet introuvable ou session X non connectée.');
+      }
+
+      // Séparer les ancêtres et les réponses
+      const focusedCreatedAt = new Date(focusedPost.createdAt).getTime();
+      const ancestors: SocialPost[] = [];
+      const replies: SocialPost[] = [];
+
+      for (const p of rawPosts) {
+        if (p.id === focusedPost.id) continue;
+        const pCreatedAt = new Date(p.createdAt).getTime();
+
+        if (pCreatedAt < focusedCreatedAt || p.id === focusedPost.replyTo?.id) {
+          ancestors.push(p);
+        } else {
+          replies.push(p);
+        }
+      }
+
+      // Trier les ancêtres chronologiquement (du plus vieux au plus récent)
+      ancestors.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      // Trier les réponses par pertinence ou chronologique
+      replies.sort((a, b) => (b.stats?.likes || 0) - (a.stats?.likes || 0));
+
+      const result: ThreadResponse = {
+        platform: 'twitter',
+        focusedPost,
+        ancestors,
+        replies,
+        source: 'live',
+      };
+
+      this.threadCache.set(cacheKey, { data: result, timestamp: Date.now() });
+      return result;
+    } catch (err: any) {
+      console.error(`[TwitterService] Erreur getPostThread (${tweetId}) :`, err.message);
+      throw new Error(`Impossible de charger la conversation X (${tweetId}) : ${err.message}`);
     }
   }
 }

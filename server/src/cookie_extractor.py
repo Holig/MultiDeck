@@ -116,10 +116,12 @@ def decrypt_chrome_cookie(val_bytes, master_key):
     dec = decrypt_dpapi(val_bytes)
     if dec:
         return dec.decode('utf-8', errors='ignore')
-    return ""
-
 def get_platform_for_domain(domain):
     dom = (domain or '').lower()
+    if 'reddit.com' in dom:
+        return 'reddit'
+    if 'threads.net' in dom or 'threads.com' in dom:
+        return 'threads'
     if 'x.com' in dom or 'twitter.com' in dom:
         return 'twitter'
     if 'instagram.com' in dom:
@@ -133,7 +135,7 @@ def get_platform_for_domain(domain):
 def extract_firefox_cookies():
     appdata = os.environ.get('APPDATA', '')
     ff_profiles = os.path.join(appdata, 'Mozilla', 'Firefox', 'Profiles')
-    results = {'twitter': [], 'instagram': [], 'tiktok': [], 'youtube': []}
+    results = {'twitter': [], 'instagram': [], 'tiktok': [], 'youtube': [], 'threads': [], 'reddit': []}
     sources = {}
 
     if not os.path.exists(ff_profiles):
@@ -152,7 +154,7 @@ def extract_firefox_cookies():
                 conn = sqlite3.connect(tmp.name)
                 c = conn.cursor()
                 c.execute("SELECT host, name, value, path, expiry, isSecure, isHttpOnly, sameSite FROM moz_cookies")
-                prof_results = {'twitter': [], 'instagram': [], 'tiktok': [], 'youtube': []}
+                prof_results = {'twitter': [], 'instagram': [], 'tiktok': [], 'youtube': [], 'threads': [], 'reddit': []}
                 for host, name, value, path, expiry, isSecure, isHttpOnly, sameSite in c.fetchall():
                     target_p = get_platform_for_domain(host)
                     if target_p and value:
@@ -178,7 +180,15 @@ def extract_firefox_cookies():
                         }
                         prof_results[target_p].append(cookie_obj)
 
-                for p in ['twitter', 'instagram', 'tiktok', 'youtube']:
+                        # Dupliquer pour .threads.net si c'est .threads.com et inversement
+                        if target_p == 'threads':
+                            alt_host = host.replace('threads.com', 'threads.net') if 'threads.com' in host else host.replace('threads.net', 'threads.com')
+                            if alt_host != host:
+                                alt_obj = dict(cookie_obj)
+                                alt_obj['domain'] = alt_host
+                                prof_results[target_p].append(alt_obj)
+
+                for p in ['twitter', 'instagram', 'tiktok', 'youtube', 'threads', 'reddit']:
                     if len(prof_results[p]) > len(results[p]):
                         results[p] = prof_results[p]
                         sources[p] = f"Mozilla Firefox ({prof})"
@@ -210,7 +220,7 @@ def extract_chromium_cookies():
         ('Opera GX', os.path.join(appdata, 'Opera Software', 'Opera GX Stable')),
     ]
 
-    results = {'twitter': [], 'instagram': [], 'tiktok': [], 'youtube': []}
+    results = {'twitter': [], 'instagram': [], 'tiktok': [], 'youtube': [], 'threads': [], 'reddit': []}
     sources = {}
 
     for b_name, base_dir in browsers:
@@ -307,9 +317,11 @@ def extract_chromium_cookies():
 
 def is_valid_session(platform, cookies):
     names = {c['name']: c['value'] for c in cookies}
+    if platform == 'reddit':
+        return ('reddit_session' in names and len(names['reddit_session']) > 5) or 'token_v2' in names
     if platform == 'twitter':
         return ('auth_token' in names and len(names['auth_token']) > 5) or 'ct0' in names
-    if platform == 'instagram':
+    if (platform == 'instagram' or platform == 'threads'):
         return ('sessionid' in names and len(names['sessionid']) > 3) or 'ds_user_id' in names
     if platform == 'tiktok':
         return ('sessionid' in names and len(names['sessionid']) > 3) or 'sid_tt' in names or 'sessionid_ss' in names
@@ -321,9 +333,9 @@ def main():
     target_platform = sys.argv[1] if len(sys.argv) > 1 else 'all'
     target_engine = sys.argv[2] if len(sys.argv) > 2 else 'all'
 
-    final_results = {'twitter': [], 'instagram': [], 'tiktok': [], 'youtube': []}
+    final_results = {'twitter': [], 'instagram': [], 'tiktok': [], 'youtube': [], 'threads': [], 'reddit': []}
     final_sources = {}
-    all_platforms = ['twitter', 'instagram', 'tiktok', 'youtube']
+    all_platforms = ['twitter', 'instagram', 'tiktok', 'youtube', 'threads', 'reddit']
 
     # Extract according to engine
     if target_engine in ('all', 'firefox'):

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   PlusCircle, 
@@ -34,13 +34,11 @@ interface FeedOptionConfig {
 }
 
 export const AddColumnModal: React.FC = () => {
-  const { isAddModalOpen, setIsAddModalOpen, addColumn } = useDeck();
+  const { isAddModalOpen, setIsAddModalOpen, addColumn, activePlatformFilter } = useDeck();
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>('twitter');
   const [selectedOptionId, setSelectedOptionId] = useState<string>('x_foryou');
   const [query, setQuery] = useState('');
   const [username, setUsername] = useState('');
-
-  if (!isAddModalOpen) return null;
 
   const platforms: { id: Platform; label: string; icon: React.ReactNode; color: string; activeBorder: string; desc: string }[] = [
     { 
@@ -50,6 +48,30 @@ export const AddColumnModal: React.FC = () => {
       color: 'border-[#1d9bf0]/50 bg-[#1d9bf0]/10', 
       activeBorder: 'border-[#1d9bf0] ring-[#1d9bf0]',
       desc: 'Timelines, tweets & mentions' 
+    },
+    { 
+      id: 'bluesky', 
+      label: 'Bluesky', 
+      icon: <span className="font-bold text-sm text-[#0285ff]">🦋</span>, 
+      color: 'border-[#0285ff]/50 bg-[#0285ff]/10', 
+      activeBorder: 'border-[#0285ff] ring-[#0285ff]',
+      desc: 'Réseau ouvert, flux & discussions' 
+    },
+    { 
+      id: 'threads', 
+      label: 'Threads', 
+      icon: <span className="font-bold text-sm text-white">🧵</span>, 
+      color: 'border-white/30 bg-white/10', 
+      activeBorder: 'border-white ring-white',
+      desc: 'Microblogging & discussions Meta' 
+    },
+    { 
+      id: 'reddit', 
+      label: 'Reddit', 
+      icon: <span className="font-bold text-sm text-[#ff4500]">🤖</span>, 
+      color: 'border-[#ff4500]/50 bg-[#ff4500]/10', 
+      activeBorder: 'border-[#ff4500] ring-[#ff4500]',
+      desc: 'Communautés, subreddits & débats' 
     },
     { 
       id: 'instagram', 
@@ -327,6 +349,172 @@ export const AddColumnModal: React.FC = () => {
         defaultTitle: 'TikTok : Recherche',
       },
     ],
+    bluesky: [
+      {
+        id: 'bsky_following',
+        label: '👥 Mes Abonnements (Récents)',
+        desc: 'Publications chronologiques des personnes que vous suivez (du plus récent au plus ancien)',
+        icon: <Users className="w-4 h-4 text-[#0285ff]" />,
+        contentType: 'home',
+        feedMode: 'following_latest',
+        requiresInput: 'username',
+        inputLabel: 'Votre nom d’utilisateur Bluesky (@) :',
+        inputPlaceholder: 'Ex: monpseudo.bsky.social',
+        defaultTitle: 'Bluesky : Abonnements',
+      },
+      {
+        id: 'bsky_hot',
+        label: '🔥 Découverte / Tendances (« What\'s Hot »)',
+        desc: 'Meilleurs posts et discussions populaires sur Bluesky',
+        icon: <Flame className="w-4 h-4 text-[#0285ff]" />,
+        contentType: 'home',
+        feedMode: 'for_you',
+        requiresInput: null,
+        defaultTitle: 'Bluesky : Tendances',
+      },
+      {
+        id: 'bsky_search',
+        label: '🔍 Recherche en direct',
+        desc: 'Rechercher des posts par mots-clés ou sujets sur Bluesky',
+        icon: <Search className="w-4 h-4 text-[#0285ff]" />,
+        contentType: 'search',
+        requiresInput: 'query',
+        inputLabel: 'Mots-clés ou sujet à rechercher :',
+        inputPlaceholder: 'Ex: tech, IA, science, politique...',
+        defaultTitle: 'Bluesky : Recherche',
+      },
+      {
+        id: 'bsky_hashtag',
+        label: '🏷️ Hashtag (#)',
+        desc: 'Posts publiés sous un hashtag Bluesky précis',
+        icon: <Hash className="w-4 h-4 text-[#0285ff]" />,
+        contentType: 'search',
+        requiresInput: 'hashtag',
+        inputLabel: 'Hashtag (avec ou sans #) :',
+        inputPlaceholder: 'Ex: #tech, #art, #gaming...',
+        defaultTitle: 'Bluesky : #',
+      },
+      {
+        id: 'bsky_user',
+        label: '👤 Compte / Profil',
+        desc: 'Posts et reposts d’un utilisateur Bluesky (@handle.bsky.social)',
+        icon: <User className="w-4 h-4 text-[#0285ff]" />,
+        contentType: 'user',
+        requiresInput: 'username',
+        inputLabel: 'Nom d’utilisateur Bluesky (@) :',
+        inputPlaceholder: 'Ex: bsky.app, nytimes.com, jay.bsky.team...',
+        defaultTitle: 'Bluesky : @',
+      },
+    ],
+    threads: [
+      {
+        id: 'threads_trending',
+        label: '🔥 Pour vous / Tendances',
+        desc: 'Publications populaires et discussions d’actualité sur Threads',
+        icon: <Flame className="w-4 h-4 text-white" />,
+        contentType: 'home',
+        feedMode: 'for_you',
+        requiresInput: null,
+        defaultTitle: 'Threads : Tendances',
+      },
+      {
+        id: 'threads_search',
+        label: '🔍 Recherche en direct',
+        desc: 'Rechercher des publications par mots-clés ou sujets sur Threads',
+        icon: <Search className="w-4 h-4 text-white" />,
+        contentType: 'search',
+        requiresInput: 'query',
+        inputLabel: 'Mots-clés ou sujet à rechercher sur Threads :',
+        inputPlaceholder: 'Ex: tech, IA, cinéma, actu...',
+        defaultTitle: 'Threads : Recherche',
+      },
+      {
+        id: 'threads_user',
+        label: '👤 Compte / Profil',
+        desc: 'Publications et réponses d’un créateur Threads (@username)',
+        icon: <User className="w-4 h-4 text-white" />,
+        contentType: 'user',
+        requiresInput: 'username',
+        inputLabel: 'Nom d’utilisateur Threads (@) :',
+        inputPlaceholder: 'Ex: zuck, mosseri, netflix, lequipe...',
+        defaultTitle: 'Threads : @',
+      },
+      {
+        id: 'threads_following',
+        label: '👥 Abonnements (Récents)',
+        desc: 'Fil chronologique des personnes que vous suivez',
+        icon: <Users className="w-4 h-4 text-white" />,
+        contentType: 'home',
+        feedMode: 'following_latest',
+        requiresInput: null,
+        defaultTitle: 'Threads : Abonnements',
+      },
+    ],
+    reddit: [
+      {
+        id: 'reddit_home',
+        label: '✨ Mes Subreddits (Accueil)',
+        desc: 'Fil personnalisé de tous les subreddits que vous suivez',
+        icon: <Sparkles className="w-4 h-4 text-[#ff4500]" />,
+        contentType: 'home',
+        feedMode: 'for_you',
+        requiresInput: null,
+        defaultTitle: 'Reddit : Mes Abonnements',
+      },
+      {
+        id: 'reddit_popular',
+        label: '🔥 Populaire (r/popular)',
+        desc: 'Les sujets les plus consultés et commentés sur Reddit',
+        icon: <TrendingUp className="w-4 h-4 text-[#ff4500]" />,
+        contentType: 'home',
+        feedMode: 'following_top',
+        requiresInput: null,
+        defaultTitle: 'Reddit : Populaire',
+      },
+      {
+        id: 'reddit_sub',
+        label: '👥 Subreddit spécifique',
+        desc: 'Suivre une communauté précise (ex: france, technology, gaming)',
+        icon: <Users className="w-4 h-4 text-[#ff4500]" />,
+        contentType: 'home',
+        requiresInput: 'username',
+        inputLabel: 'Nom du Subreddit (sans r/) :',
+        inputPlaceholder: 'france, technology, askreddit, webdev...',
+        defaultTitle: 'Reddit : r/',
+      },
+      {
+        id: 'reddit_new',
+        label: '🕒 Nouveautés en direct (New)',
+        desc: 'Les publications les plus récentes publiées en temps réel',
+        icon: <Clock className="w-4 h-4 text-[#ff4500]" />,
+        contentType: 'home',
+        feedMode: 'following_latest',
+        requiresInput: null,
+        defaultTitle: 'Reddit : Récents',
+      },
+      {
+        id: 'reddit_search',
+        label: '🔍 Recherche par mots-clés',
+        desc: 'Trouver des publications correspondant à une requête sur Reddit',
+        icon: <Search className="w-4 h-4 text-[#ff4500]" />,
+        contentType: 'search',
+        requiresInput: 'query',
+        inputLabel: 'Mots-clés de recherche :',
+        inputPlaceholder: 'intelligence artificielle, claude, space...',
+        defaultTitle: 'Reddit : Recherche',
+      },
+      {
+        id: 'reddit_user',
+        label: '👤 Profil Redditor (u/user)',
+        desc: 'Publications et soumissions d’un utilisateur',
+        icon: <User className="w-4 h-4 text-[#ff4500]" />,
+        contentType: 'user',
+        requiresInput: 'username',
+        inputLabel: 'Nom d’utilisateur Reddit (sans u/) :',
+        inputPlaceholder: 'spez, AutoModerator...',
+        defaultTitle: 'Reddit : u/',
+      },
+    ],
   };
 
   const currentOptions = platformFeedOptions[selectedPlatform] || [];
@@ -340,15 +528,38 @@ export const AddColumnModal: React.FC = () => {
     }
   };
 
+  // Présélection automatique de la plateforme correspondant au filtre actif lors de l'ouverture
+  useEffect(() => {
+    if (isAddModalOpen) {
+      const targetPlatform: Platform = (activePlatformFilter && activePlatformFilter !== 'all')
+        ? activePlatformFilter
+        : 'twitter';
+
+      setSelectedPlatform(targetPlatform);
+      const newOptions = platformFeedOptions[targetPlatform] || [];
+      if (newOptions.length > 0) {
+        setSelectedOptionId(newOptions[0].id);
+      }
+      setQuery('');
+      setUsername('');
+    }
+  }, [isAddModalOpen, activePlatformFilter]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentSelectedOption) return;
 
     const cleanQ = query.trim();
-    const cleanUser = username.replace('@', '').trim();
+    const cleanUser = username.replace('@', '').replace(/^r\//i, '').replace(/^u\//i, '').trim();
 
     let title = currentSelectedOption.defaultTitle;
-    if (currentSelectedOption.requiresInput === 'username') {
+    if (currentSelectedOption.id === 'bsky_following') {
+      title = cleanUser ? `Bluesky : Abonnements (@${cleanUser})` : 'Bluesky : Abonnements';
+    } else if (currentSelectedOption.id === 'reddit_sub') {
+      title = cleanUser ? `Reddit : r/${cleanUser}` : 'Reddit : Subreddit';
+    } else if (currentSelectedOption.id === 'reddit_user') {
+      title = cleanUser ? `Reddit : u/${cleanUser}` : 'Reddit : Profil';
+    } else if (currentSelectedOption.requiresInput === 'username') {
       title = `${selectedPlatform.toUpperCase()} : @${cleanUser || 'compte'}`;
     } else if (currentSelectedOption.requiresInput === 'hashtag') {
       const formattedTag = cleanQ.startsWith('#') ? cleanQ : `#${cleanQ}`;
@@ -385,6 +596,8 @@ export const AddColumnModal: React.FC = () => {
     setUsername('');
     setIsAddModalOpen(false);
   };
+
+  if (!isAddModalOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
@@ -633,6 +846,58 @@ export const AddColumnModal: React.FC = () => {
                   className="px-2 py-0.5 rounded-md bg-[#1e293b] hover:bg-cyan-500/20 hover:text-[#00f2fe] text-[11px] transition-colors"
                 >
                   🏷️ #Hashtag
+                </button>
+              </>
+            )}
+
+            {selectedPlatform === 'bluesky' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOptionId('bsky_following')}
+                  className="px-2 py-0.5 rounded-md bg-[#1e293b] hover:bg-[#0285ff]/20 hover:text-[#0285ff] text-[11px] transition-colors"
+                >
+                  👥 Abonnements (Récents)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOptionId('bsky_hot')}
+                  className="px-2 py-0.5 rounded-md bg-[#1e293b] hover:bg-[#0285ff]/20 hover:text-[#0285ff] text-[11px] transition-colors"
+                >
+                  🔥 Tendances
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOptionId('bsky_search')}
+                  className="px-2 py-0.5 rounded-md bg-[#1e293b] hover:bg-[#0285ff]/20 hover:text-[#0285ff] text-[11px] transition-colors"
+                >
+                  🔍 Recherche
+                </button>
+              </>
+            )}
+
+            {selectedPlatform === 'threads' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOptionId('threads_trending')}
+                  className="px-2 py-0.5 rounded-md bg-[#1e293b] hover:bg-white/20 hover:text-white text-[11px] transition-colors"
+                >
+                  🔥 Tendances
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOptionId('threads_search')}
+                  className="px-2 py-0.5 rounded-md bg-[#1e293b] hover:bg-white/20 hover:text-white text-[11px] transition-colors"
+                >
+                  🔍 Recherche
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOptionId('threads_following')}
+                  className="px-2 py-0.5 rounded-md bg-[#1e293b] hover:bg-white/20 hover:text-white text-[11px] transition-colors"
+                >
+                  👥 Abonnements
                 </button>
               </>
             )}

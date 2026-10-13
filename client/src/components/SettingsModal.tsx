@@ -15,10 +15,13 @@ import {
   Share2,
   FileJson,
   AlertCircle,
-  Palette
+  Palette,
+  Languages,
+  Globe
 } from 'lucide-react';
 import { useDeck } from '../context/DeckContext';
 import { api } from '../services/api';
+import { SUPPORTED_LANGUAGES } from '../i18n/translations';
 
 export const SettingsModal: React.FC = () => {
   const { 
@@ -28,7 +31,12 @@ export const SettingsModal: React.FC = () => {
     setTheme, 
     columns,
     resetColumns,
-    importColumns
+    importColumns,
+    language,
+    setLanguage,
+    autoTranslatePosts,
+    setAutoTranslatePosts,
+    t
   } = useDeck();
 
   const [cacheCleared, setCacheCleared] = useState(false);
@@ -222,15 +230,95 @@ export const SettingsModal: React.FC = () => {
 
         {/* Corps */}
         <div className="p-6 space-y-6">
+          {/* Choix de la langue de l'interface avec traduction automatique */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold theme-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                <Languages className="w-4 h-4 text-[#1d9bf0]" />
+                {t('settings.languageSection')}
+              </label>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1d9bf0]/10 text-[#1d9bf0] flex items-center gap-1 border border-[#1d9bf0]/20">
+                <span>{SUPPORTED_LANGUAGES.find((l) => l.code === language)?.flag}</span>
+                <span>{SUPPORTED_LANGUAGES.find((l) => l.code === language)?.nativeName}</span>
+              </span>
+            </div>
+
+            <p className="text-[11px] theme-text-secondary leading-relaxed">
+              {t('settings.languageDesc')}
+            </p>
+
+            {/* Grille responsive des langues */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {SUPPORTED_LANGUAGES.map((lang) => {
+                const isSelected = language === lang.code;
+                return (
+                  <button
+                    key={lang.code}
+                    type="button"
+                    onClick={() => setLanguage(lang.code)}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition-all ${
+                      isSelected
+                        ? 'border-[#1d9bf0] bg-[#1d9bf0]/15 text-[#1d9bf0] font-bold ring-2 ring-[#1d9bf0]/40 shadow-sm'
+                        : 'theme-border theme-bg-surface theme-text-secondary hover:theme-text-primary hover:border-[#1d9bf0]/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg leading-none">{lang.flag}</span>
+                      <div className="text-left min-w-0">
+                        <div className="text-xs font-bold truncate leading-tight">{lang.nativeName}</div>
+                        <div className="text-[10px] opacity-70 truncate">{lang.name}</div>
+                      </div>
+                    </div>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-[#1d9bf0] flex-shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Option Traduction automatique des publications */}
+            <div className="p-3 rounded-xl border theme-border theme-bg-surface flex items-center justify-between gap-3 mt-1">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-lg bg-[#0285ff]/15 text-[#0285ff] flex-shrink-0">
+                  <Globe className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold theme-text-primary">
+                    {t('settings.autoTranslateSection')}
+                  </div>
+                  <div className="text-[10px] theme-text-secondary truncate sm:whitespace-normal">
+                    {t('settings.autoTranslateDesc')}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAutoTranslatePosts(!autoTranslatePosts)}
+                className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 cursor-pointer ${
+                  autoTranslatePosts ? 'bg-[#1d9bf0]' : 'bg-gray-600/40'
+                }`}
+                title={autoTranslatePosts ? t('settings.autoTranslateEnabled') : t('settings.autoTranslateDisabled')}
+              >
+                <span
+                  className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                    autoTranslatePosts ? 'right-1' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          <div className="w-full h-[1px] theme-border border-b opacity-50" />
+
           {/* Réglage du thème avec 3 modes */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold theme-text-secondary uppercase tracking-wider flex items-center gap-1.5">
                 <Palette className="w-4 h-4 text-[#1d9bf0]" />
-                Apparence & Thème
+                {t('settings.themeSection')}
               </label>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#1d9bf0]/10 text-[#1d9bf0] capitalize">
-                {theme === 'light' ? 'Mode Clair' : theme === 'dim' ? 'Bleu Nuit' : 'Noir Absolu'}
+                {theme === 'light' ? t('settings.themeLight') : theme === 'dim' ? t('settings.themeDim') : t('settings.themeBlack')}
               </span>
             </div>
 

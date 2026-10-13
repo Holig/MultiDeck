@@ -10,6 +10,7 @@ installer_output/
 *.exe
 
 # Playwright & Browser user data & caches
+user_data/
 server/user_data/
 *.log
 runtime-info.json

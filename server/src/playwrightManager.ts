@@ -27,7 +27,7 @@ export class PlaywrightManager {
     return path.join(dir, 'cookies.json');
   }
 
-  private loadSavedCookies(platform: Platform): any[] {
+  public loadSavedCookies(platform: Platform): any[] {
     try {
       const file = this.getCookiesFilePath(platform);
       if (fs.existsSync(file)) {
@@ -68,8 +68,8 @@ export class PlaywrightManager {
   }
 
   public getEngineForPlatform(platform: Platform): BrowserEngine {
-    // Firefox est le moteur optimal pour Twitter et Instagram car Chromium headless est détecté par les protections antibot
-    if (platform === 'twitter' || platform === 'instagram') {
+    // Firefox est le moteur optimal pour Twitter, Instagram, Threads et Reddit
+    if (platform === 'twitter' || platform === 'instagram' || platform === 'threads' || platform === 'reddit') {
       return 'firefox';
     }
     return this.currentEngine;
@@ -232,6 +232,27 @@ export class PlaywrightManager {
       } else if (platform === 'youtube') {
         const hasLogin = allCookies.some((c) => (c.name === 'LOGIN_INFO' || c.name === 'SAPISID' || c.name === 'SID' || c.name === '__Secure-1PSID') && c.value && c.value.length > 5);
         isAuthenticated = hasLogin;
+      } else if (platform === 'threads') {
+        const hasSessionId = allCookies.some((c) => (c.name === 'sessionid' || c.name === 'ds_user_id') && c.value && c.value.length > 2);
+        const hasCsrf = allCookies.some((c) => c.name === 'csrftoken' && ((c.domain || '').includes('threads.net') || (c.domain || '').includes('threads.com')));
+        isAuthenticated = hasSessionId || hasCsrf;
+
+        const dsUser = allCookies.find((c) => c.name === 'ds_user_id' || c.name === 'ds_user');
+        if (dsUser) username = decodeURIComponent(dsUser.value);
+      } else if (platform === 'reddit') {
+        const hasSession = allCookies.some((c) => (c.name === 'reddit_session' || c.name === 'token_v2') && c.value && c.value.length > 5);
+        isAuthenticated = hasSession;
+
+        const tokenCookie = allCookies.find((c) => c.name === 'token_v2');
+        if (tokenCookie && tokenCookie.value) {
+          try {
+            const parts = tokenCookie.value.split('.');
+            if (parts[1]) {
+              const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+              if (payload.sub && payload.sub !== 'user') username = payload.sub;
+            }
+          } catch (e) {}
+        }
       }
 
       return {
@@ -258,11 +279,13 @@ export class PlaywrightManager {
    * Statut global de tous les réseaux
    */
   public async getSystemStatus(): Promise<SystemStatus> {
-    const [twitter, instagram, tiktok, youtubeSession] = await Promise.all([
+    const [twitter, instagram, tiktok, youtubeSession, threadsSession, redditSession] = await Promise.all([
       this.checkSession('twitter'),
       this.checkSession('instagram'),
       this.checkSession('tiktok'),
       this.checkSession('youtube'),
+      this.checkSession('threads'),
+      this.checkSession('reddit'),
     ]);
 
     return {
@@ -274,6 +297,14 @@ export class PlaywrightManager {
         hasApiKey: youtubeService.hasApiKey(),
         channelConnected: youtubeSession.isAuthenticated,
       },
+      bluesky: {
+        isAuthenticated: true,
+        isBrowserOpen: false,
+        cookiesDetected: false,
+        lastChecked: new Date().toISOString(),
+      },
+      threads: threadsSession,
+      reddit: redditSession,
     };
   }
 
@@ -288,7 +319,11 @@ export class PlaywrightManager {
     let targetUrl = 'https://x.com/login';
     if (platform === 'instagram') targetUrl = 'https://www.instagram.com/accounts/login/';
     if (platform === 'tiktok') targetUrl = 'https://www.tiktok.com/login';
+    if (platform === 'threads') targetUrl = 'https://www.threads.net/login';
+    if (platform === 'reddit') targetUrl = 'https://www.reddit.com/login';
     if (platform === 'youtube') targetUrl = 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fwww.youtube.com%2Ffeed%2Fsubscriptions';
+    if (platform === 'bluesky') targetUrl = 'https://bsky.app';
+    if (platform === 'threads') targetUrl = 'https://www.threads.net/login';
 
     const platformDataDir = path.join(this.userDataDir, platform, engine);
     if (!fs.existsSync(platformDataDir)) fs.mkdirSync(platformDataDir, { recursive: true });
@@ -378,6 +413,18 @@ export class PlaywrightManager {
         for (const domain of domains) {
           cookiesToSet.push({
             name: 'sessionid',
+            value: val,
+            domain,
+            path: '/',
+            secure: true,
+            httpOnly: true,
+          });
+        }
+      } else if (platform === 'reddit') {
+        const domains = ['.reddit.com', 'www.reddit.com'];
+        for (const domain of domains) {
+          cookiesToSet.push({
+            name: 'reddit_session',
             value: val,
             domain,
             path: '/',
@@ -515,7 +562,7 @@ export class PlaywrightManager {
     totalCount: number;
     message: string;
   }> {
-    const platforms: Platform[] = ['twitter', 'instagram', 'tiktok', 'youtube'];
+    const platforms: Platform[] = ['twitter', 'instagram', 'tiktok', 'youtube', 'threads', 'reddit'];
     const summary: Record<string, { success: boolean; message: string; username?: string }> = {};
     let connectedCount = 0;
 

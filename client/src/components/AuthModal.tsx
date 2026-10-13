@@ -43,14 +43,20 @@ export const AuthModal: React.FC = () => {
     ? systemStatus?.instagram
     : selectedAuthPlatform === 'tiktok'
     ? systemStatus?.tiktok
+    : selectedAuthPlatform === 'threads'
+    ? systemStatus?.threads
+    : selectedAuthPlatform === 'reddit'
+    ? systemStatus?.reddit
     : systemStatus?.youtube;
 
   const isConnected = currentPlatformStatus?.isAuthenticated;
 
-  // Calcul du nombre de réseaux connectés (Twitter, Instagram, TikTok, YouTube)
+  // Calcul du nombre de réseaux connectés
   const connectedCount = (systemStatus?.twitter?.isAuthenticated ? 1 : 0) +
     (systemStatus?.instagram?.isAuthenticated ? 1 : 0) +
     (systemStatus?.tiktok?.isAuthenticated ? 1 : 0) +
+    (systemStatus?.threads?.isAuthenticated ? 1 : 0) +
+    (systemStatus?.reddit?.isAuthenticated ? 1 : 0) +
     (systemStatus?.youtube?.isAuthenticated ? 1 : 0);
 
   const handleStart = async () => {
@@ -119,6 +125,9 @@ export const AuthModal: React.FC = () => {
     instagram: { cookieName: 'sessionid', domain: 'instagram.com', example: '5829104%3A...' },
     tiktok: { cookieName: 'sessionid', domain: 'tiktok.com', example: 'a9f2b8...' },
     youtube: { cookieName: 'SID', domain: 'google.com', example: '...' },
+    bluesky: { cookieName: 'Public (Aucun)', domain: 'bsky.app', example: 'Accès public ouvert sans cookies' },
+    threads: { cookieName: 'sessionid', domain: 'threads.net', example: 'Partagé avec Instagram / Meta' },
+    reddit: { cookieName: 'reddit_session', domain: 'reddit.com', example: 'eyJhbGci...' },
   };
 
   const info = cookieInfoMap[selectedAuthPlatform] || cookieInfoMap.twitter;
@@ -226,16 +235,32 @@ export const AuthModal: React.FC = () => {
             <label className="text-xs font-bold text-[#8b98a5] uppercase tracking-wider">
               Ou configurer par réseau :
             </label>
-            <div className="grid grid-cols-4 bg-[#1e293b] rounded-xl p-1 border border-[#38444d]/50 gap-1">
-              {(['twitter', 'instagram', 'tiktok', 'youtube'] as Platform[]).map((p) => {
+            <div className="grid grid-cols-3 sm:grid-cols-6 bg-[#1e293b] rounded-xl p-1 border border-[#38444d]/50 gap-1">
+              {(['twitter', 'threads', 'reddit', 'instagram', 'tiktok', 'youtube'] as Platform[]).map((p) => {
                 const isSelected = selectedAuthPlatform === p;
                 const isPConnected = p === 'twitter' 
                   ? systemStatus?.twitter.isAuthenticated 
+                  : p === 'threads'
+                  ? systemStatus?.threads?.isAuthenticated
+                  : p === 'reddit'
+                  ? systemStatus?.reddit?.isAuthenticated
                   : p === 'instagram' 
                   ? systemStatus?.instagram.isAuthenticated 
                   : p === 'tiktok'
                   ? systemStatus?.tiktok.isAuthenticated
                   : systemStatus?.youtube?.isAuthenticated;
+
+                const label = p === 'twitter' 
+                  ? '𝕏' 
+                  : p === 'threads' 
+                  ? 'Threads' 
+                  : p === 'reddit' 
+                  ? 'Reddit' 
+                  : p === 'instagram' 
+                  ? 'Instagram' 
+                  : p === 'tiktok' 
+                  ? 'TikTok' 
+                  : 'YouTube';
 
                 return (
                   <button
@@ -250,7 +275,7 @@ export const AuthModal: React.FC = () => {
                         : 'text-[#8b98a5] hover:text-white'
                     }`}
                   >
-                    <span className="truncate">{p === 'twitter' ? '𝕏' : p === 'instagram' ? 'Instagram' : p === 'tiktok' ? 'TikTok' : 'YouTube'}</span>
+                    <span className="truncate">{label}</span>
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isPConnected ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-amber-400'}`} />
                   </button>
                 );

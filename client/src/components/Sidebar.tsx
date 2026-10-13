@@ -25,8 +25,27 @@ export const Sidebar: React.FC = () => {
     setIsSettingsModalOpen,
     setIsInfoModalOpen,
     theme,
-    setTheme
+    setTheme,
+    t
   } = useDeck();
+
+  const [hasReadInfo, setHasReadInfo] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem('multideck_info_read') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleOpenInfo = () => {
+    setIsInfoModalOpen(true);
+    if (!hasReadInfo) {
+      setHasReadInfo(true);
+      try {
+        localStorage.setItem('multideck_info_read', 'true');
+      } catch {}
+    }
+  };
 
   const handleOpenAuth = (platform: Platform) => {
     setSelectedAuthPlatform(platform);
@@ -34,8 +53,11 @@ export const Sidebar: React.FC = () => {
   };
 
   const platforms: { id: Platform | 'all'; label: string; icon: React.ReactNode; color: string }[] = [
-    { id: 'all', label: 'Tous les flux', icon: <LayoutGrid className="w-5 h-5" />, color: 'theme-text-primary' },
+    { id: 'all', label: t('sidebar.allFeeds'), icon: <LayoutGrid className="w-5 h-5" />, color: 'theme-text-primary' },
     { id: 'twitter', label: 'X (Twitter)', icon: <span className="font-black text-sm">𝕏</span>, color: 'text-[#1d9bf0]' },
+    { id: 'bluesky', label: 'Bluesky', icon: <span className="text-base leading-none">🦋</span>, color: 'text-[#0285ff]' },
+    { id: 'threads', label: 'Threads', icon: <span className="text-base leading-none">🧵</span>, color: 'text-white' },
+    { id: 'reddit', label: 'Reddit', icon: <span className="text-base leading-none">🤖</span>, color: 'text-[#ff4500]' },
     { id: 'youtube', label: 'YouTube', icon: <Youtube className="w-5 h-5" />, color: 'text-red-500' },
     { id: 'tiktok', label: 'TikTok', icon: <Flame className="w-5 h-5" />, color: 'text-[#00f2fe]' },
     { id: 'instagram', label: 'Instagram', icon: <Instagram className="w-5 h-5" />, color: 'text-pink-500' },
@@ -62,7 +84,7 @@ export const Sidebar: React.FC = () => {
         <button
           onClick={() => setIsAddModalOpen(true)}
           className="w-11 h-11 rounded-full bg-[#1d9bf0]/15 hover:bg-[#1d9bf0] text-[#1d9bf0] hover:text-white flex items-center justify-center transition-all duration-200 group relative shadow-md"
-          title="Ajouter une colonne (+)"
+          title={t('sidebar.addColumn')}
         >
           <Plus className="w-6 h-6 group-hover:rotate-90 transition-transform duration-300" />
         </button>
@@ -110,6 +132,40 @@ export const Sidebar: React.FC = () => {
           }`} />
         </button>
 
+        {/* Statut Bluesky */}
+        <button
+          onClick={() => setActivePlatformFilter('bluesky')}
+          className="w-8 h-8 rounded-lg theme-bg-surface hover:opacity-80 flex items-center justify-center relative hover:scale-105 transition-all shadow-sm theme-border border"
+          title="Bluesky : Actif (API Publique Ouverte)"
+        >
+          <span className="text-xs leading-none">🦋</span>
+          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 theme-border bg-emerald-400" />
+        </button>
+
+        {/* Statut Threads */}
+        <button
+          onClick={() => handleOpenAuth('threads')}
+          className="w-8 h-8 rounded-lg theme-bg-surface hover:opacity-80 flex items-center justify-center relative hover:scale-105 transition-all shadow-sm theme-border border"
+          title={`Threads : ${systemStatus?.threads?.isAuthenticated ? 'Connecté' : 'Non connecté'}`}
+        >
+          <span className="text-xs leading-none">🧵</span>
+          <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 theme-border ${
+            systemStatus?.threads?.isAuthenticated ? 'bg-emerald-400' : 'bg-amber-400'
+          }`} />
+        </button>
+
+        {/* Statut Reddit */}
+        <button
+          onClick={() => handleOpenAuth('reddit')}
+          className="w-8 h-8 rounded-lg theme-bg-surface hover:opacity-80 flex items-center justify-center relative hover:scale-105 transition-all shadow-sm theme-border border"
+          title={`Reddit : ${systemStatus?.reddit?.isAuthenticated ? 'Connecté' : 'Non connecté'}`}
+        >
+          <span className="text-xs leading-none">🤖</span>
+          <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 theme-border ${
+            systemStatus?.reddit?.isAuthenticated ? 'bg-emerald-400' : 'bg-amber-400'
+          }`} />
+        </button>
+
         {/* Statut Instagram */}
         <button
           onClick={() => handleOpenAuth('instagram')}
@@ -151,19 +207,21 @@ export const Sidebar: React.FC = () => {
       <div className="flex flex-col items-center gap-2.5 w-full">
         {/* Page / Guide d'Information & Sécurité (juste au-dessus des paramètres) */}
         <button
-          onClick={() => setIsInfoModalOpen(true)}
+          onClick={handleOpenInfo}
           className="w-10 h-10 rounded-xl hover:theme-bg-surface text-[#1d9bf0] hover:text-[#1d9bf0] hover:scale-105 flex items-center justify-center transition-all relative group"
-          title="Guide du projet, Sécurité & Confidentialité"
+          title={t('sidebar.guide')}
         >
           <Info className="w-5 h-5" />
-          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#1d9bf0] animate-pulse" />
+          {!hasReadInfo && (
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#1d9bf0] ring-2 theme-border animate-pulse" />
+          )}
         </button>
 
         {/* Bascule de thème */}
         <button
           onClick={cycleTheme}
           className="w-10 h-10 rounded-xl hover:theme-bg-surface theme-text-secondary hover:theme-text-primary flex items-center justify-center transition-colors"
-          title={`Thème actuel : ${theme === 'light' ? 'Mode Clair' : theme === 'dim' ? 'Bleu Nuit' : 'Noir Absolu'} (cliquer pour changer)`}
+          title={t('sidebar.theme')}
         >
           {theme === 'light' ? (
             <Sun className="w-4 h-4 text-amber-500" />
@@ -178,7 +236,7 @@ export const Sidebar: React.FC = () => {
         <button
           onClick={() => setIsSettingsModalOpen(true)}
           className="w-10 h-10 rounded-xl hover:theme-bg-surface theme-text-secondary hover:theme-text-primary flex items-center justify-center transition-colors"
-          title="Paramètres de l'application"
+          title={t('sidebar.settings')}
         >
           <Settings className="w-5 h-5" />
         </button>

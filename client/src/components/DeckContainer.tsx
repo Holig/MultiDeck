@@ -21,7 +21,7 @@ export const DeckContainer: React.FC = () => {
             {activePlatformFilter === 'all' ? 'Votre MultiDeck est vide' : `Aucune colonne pour ${activePlatformFilter.toUpperCase()}`}
           </h2>
           <p className="text-[#8b98a5] text-sm max-w-md mt-1 mb-6">
-            Ajoutez des colonnes pour suivre X, YouTube, TikTok et Instagram en temps réel dans une seule interface.
+            Ajoutez des colonnes pour suivre X, Bluesky, Threads, Reddit, YouTube, TikTok et Instagram en temps réel dans une seule interface.
           </p>
 
           <button
