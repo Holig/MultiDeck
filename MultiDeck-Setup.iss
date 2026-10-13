@@ -3,7 +3,7 @@
 ; ========================================================
 
 #define MyAppName "MultiDeck"
-#define MyAppVersion "1.1.2"
+#define MyAppVersion "1.1.3"
 #define MyAppPublisher "MultiDeck Open Source"
 #define MyAppURL "https://github.com/Holig/MultiDeck"
 #define MyAppExeName "MultiDeck.exe"
@@ -28,6 +28,13 @@ SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64
+; Métadonnées de version pour réduire les faux-positifs antivirus
+VersionInfoVersion={#MyAppVersion}.0
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription=MultiDeck Windows Installer
+VersionInfoCopyright=Copyright (c) 2026 MultiDeck
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}.0
 
 [Languages]
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
@@ -55,6 +62,9 @@ Source: "client\dist\*"; DestDir: "{app}\client\dist"; Flags: ignoreversion recu
 ; Node.js autonome embarqué (optionnel, permet l'exécution sans prérequis)
 Source: "node\*"; DestDir: "{app}\node"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 
+; Script d'installation automatique des composants Playwright
+Source: "launcher\install-browsers.bat"; DestDir: "{app}\launcher"; Flags: ignoreversion
+
 [Icons]
 ; Menu Démarrer
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\icon.ico"
@@ -62,6 +72,8 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFile
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\assets\icon.ico"; Tasks: desktopicon
 
 [Run]
+; Installation automatique des navigateurs requis par Playwright (Firefox & Chromium)
+Filename: "{app}\launcher\install-browsers.bat"; StatusMsg: "Téléchargement et configuration des moteurs de navigation (Firefox, Chromium)..."; Flags: runhidden
 ; Lancer MultiDeck à la fin de l'installation
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 

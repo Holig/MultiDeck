@@ -13,6 +13,7 @@ export class PlaywrightManager {
   private currentEngine: BrowserEngine = 'chromium';
   private openInteractivePlatforms: Set<string> = new Set();
   private queueLocks: Map<string, Promise<void>> = new Map();
+  private installingEngines: Map<BrowserEngine, Promise<void>> = new Map();
 
   constructor() {
     this.userDataDir = path.resolve(process.cwd(), 'user_data');
@@ -76,6 +77,63 @@ export class PlaywrightManager {
   }
 
   /**
+   * Vérifie et installe automatiquement le binaire du navigateur Playwright si manquant
+   */
+  public async ensureBrowserInstalled(engine: BrowserEngine): Promise<void> {
+    const launcher = this.getEngineLauncher(engine);
+    try {
+      const execPath = launcher.executablePath();
+      if (fs.existsSync(execPath)) {
+        return;
+      }
+    } catch (e) {
+      // executablePath() peut échouer si le binaire n'est pas encore téléchargé
+    }
+
+    const currentInstall = this.installingEngines.get(engine);
+    if (currentInstall) {
+      return await currentInstall;
+    }
+
+    const installPromise = (async () => {
+      console.log(`[PlaywrightManager] 📥 Binaire ${engine} non détecté dans ms-playwright. Téléchargement et installation automatique...`);
+      const { exec } = await import('child_process');
+      const util = await import('util');
+      const execAsync = util.promisify(exec);
+
+      let cliPath: string;
+      try {
+        const pwPkg = require.resolve('playwright/package.json');
+        cliPath = path.join(path.dirname(pwPkg), 'cli.js');
+      } catch {
+        cliPath = path.resolve(__dirname, '../../node_modules/playwright/cli.js');
+        if (!fs.existsSync(cliPath)) {
+          cliPath = path.resolve(__dirname, '../node_modules/playwright/cli.js');
+        }
+      }
+
+      const nodeExe = process.execPath;
+      const cmd = `"${nodeExe}" "${cliPath}" install ${engine}`;
+      console.log(`[PlaywrightManager] 🚀 Exécution de : ${cmd}`);
+
+      try {
+        await execAsync(cmd, { timeout: 300000 });
+        console.log(`[PlaywrightManager] ✅ Navigateur ${engine} installé et prêt à l'emploi !`);
+      } catch (err: any) {
+        console.error(`[PlaywrightManager] ❌ Échec de l'installation automatique de ${engine} :`, err.message);
+        throw new Error(`Le navigateur ${engine} n'a pas pu être installé automatiquement. Vérifiez votre connexion Internet.`);
+      }
+    })();
+
+    this.installingEngines.set(engine, installPromise);
+    try {
+      await installPromise;
+    } finally {
+      this.installingEngines.delete(engine);
+    }
+  }
+
+  /**
    * Verrou de file d'attente par plateforme pour éviter les accès simultanés
    */
   public async executeWithLock<T>(platform: Platform, task: (context: BrowserContext) => Promise<T>): Promise<T> {
@@ -122,6 +180,8 @@ export class PlaywrightManager {
       }
     }
 
+    await this.ensureBrowserInstalled(engine);
+
     try {
       const context = await engineLauncher.launchPersistentContext(platformDataDir, {
         headless: options.headless ?? true,
@@ -162,7 +222,55 @@ export class PlaywrightManager {
 
       this.contexts.set(key, context);
       return context;
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.message && (err.message.includes("Executable doesn't exist") || err.message.includes("download new browsers"))) {
+        console.warn(`[PlaywrightManager] 🔄 Binaire manquant détecté pour ${engine}. Lancement de l'installation automatique...`);
+        try {
+          await this.ensureBrowserInstalled(engine);
+          const retryContext = await engineLauncher.launchPersistentContext(platformDataDir, {
+            headless: options.headless ?? true,
+            viewport: { width: 1280, height: 800 },
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            args: engine === 'chromium' ? [
+              '--disable-blink-features=AutomationControlled',
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disk-cache-size=52428800',
+              '--media-cache-size=26214400',
+            ] : [
+              '-no-remote',
+              '-new-instance',
+            ],
+            firefoxUserPrefs: engine === 'firefox' ? {
+              'browser.cache.disk.capacity': 51200,
+              'browser.cache.disk.smart_size.enabled': false,
+              'media.cache_size': 25600,
+              'toolkit.startup.max_resumed_crashes': -1,
+              'browser.sessionstore.resume_from_crash': false,
+            } : undefined,
+          });
+
+          const savedCookies = this.loadSavedCookies(platform);
+          if (savedCookies.length > 0) {
+            try {
+              const safe = this.sanitizeCookiesForPlaywright(savedCookies);
+              if (safe.length > 0) await retryContext.addCookies(safe);
+            } catch (e) {}
+          }
+
+          retryContext.on('close', () => {
+            this.contexts.delete(key);
+            this.openInteractivePlatforms.delete(platform);
+          });
+
+          this.contexts.set(key, retryContext);
+          return retryContext;
+        } catch (retryErr) {
+          console.error(`[PlaywrightManager] Échec persistant après tentative d'installation ${platform} :`, retryErr);
+          throw retryErr;
+        }
+      }
+
       console.error(`[PlaywrightManager] Erreur contexte ${platform} :`, err);
       throw err;
     }
@@ -347,6 +455,8 @@ export class PlaywrightManager {
 
     const platformDataDir = path.join(this.userDataDir, platform, engine);
     if (!fs.existsSync(platformDataDir)) fs.mkdirSync(platformDataDir, { recursive: true });
+
+    await this.ensureBrowserInstalled(engine);
 
     try {
       const launcher = this.getEngineLauncher(engine);

@@ -16,6 +16,7 @@ server/user_data/
 runtime-info.json
 server/runtime-info.json
 *cookies*.json
+*test_data*.json
 *.sqlite*
 
 # Environment variables

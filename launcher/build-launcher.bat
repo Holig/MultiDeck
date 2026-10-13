@@ -20,7 +20,7 @@ if not exist "assets\icon.ico" (
 )
 
 echo Compilation de MultiDeck.exe avec "%CSC%"...
-"%CSC%" /nologo /target:winexe /win32icon:assets\icon.ico /out:MultiDeck.exe /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Net.Http.dll launcher\MultiDeckLauncher.cs
+"%CSC%" /nologo /target:winexe /win32icon:assets\icon.ico /out:MultiDeck.exe /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Net.Http.dll launcher\MultiDeckLauncher.cs launcher\AssemblyInfo.cs
 
 if %ERRORLEVEL% EQU 0 (
     echo [SUCCES] MultiDeck.exe genere avec succes a la racine du projet !
