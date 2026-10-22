@@ -59,10 +59,12 @@ export class YouTubeService {
     }
 
     const now = Date.now();
-    const match = text.match(/(\d+)\s*(seconde|second|sec|minute|min|heure|hour|h|jour|day|j|semaine|week|sem|mois|month|an|année|year)/i);
+    // Formats longs ("il y a 3 jours") et abrégés de YouTube ("il y a 4 j", "2 sem.", "5 m." = mois, "3 a" = ans)
+    const match = text.match(/(\d+)\s*(seconde|second|sec|minute|min|heure|hour|h|jour|day|j|semaine|week|sem|mois|month|an|année|year|m\.|a(?![a-zà-ÿ]))/i);
     if (match) {
       const count = parseInt(match[1], 10);
-      const unit = match[2].toLowerCase();
+      const rawUnit = match[2].toLowerCase();
+      const unit = rawUnit === 'm.' ? 'mois' : rawUnit === 'a' ? 'an' : rawUnit;
 
       let deltaMs = 0;
       if (unit.startsWith('sec')) {
@@ -189,7 +191,7 @@ export class YouTubeService {
       try {
         const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${encodeURIComponent(
           cleanQuery + (isShorts ? ' #shorts' : '')
-        )}&type=video&key=${this.apiKey}`;
+        )}&type=video&key=${encodeURIComponent(this.apiKey)}`;
 
         const res = await fetch(searchUrl);
         if (res.ok) {
@@ -198,7 +200,7 @@ export class YouTubeService {
 
           let statsMap: Record<string, any> = {};
           if (videoIds) {
-            const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds}&key=${this.apiKey}`;
+            const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds}&key=${encodeURIComponent(this.apiKey)}`;
             const detailsRes = await fetch(detailsUrl);
             if (detailsRes.ok) {
               const detailsJson = await detailsRes.json();
@@ -275,10 +277,89 @@ export class YouTubeService {
   }
 
   /**
+   * Tendances : YouTube a supprimé la page /feed/trending en 2025.
+   * - Avec clé API : classement officiel des vidéos les plus populaires (chart=mostPopular, région FR)
+   * - Sans clé : vidéos les plus vues mises en ligne cette semaine (recherche triée par nombre de vues)
+   */
+  public async getTrendingFeed(forceRefresh = false): Promise<FeedResponse> {
+    const cacheKey = 'youtube:trending';
+    if (!forceRefresh) {
+      const cached = cacheManager.get(cacheKey);
+      if (cached) {
+        return { platform: 'youtube', posts: cached.data, source: 'cache', cachedAt: new Date(cached.timestamp).toISOString() };
+      }
+    }
+
+    if (this.hasApiKey()) {
+      try {
+        const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&chart=mostPopular&regionCode=FR&maxResults=25&key=${encodeURIComponent(this.apiKey)}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const json = await res.json();
+          const posts: SocialPost[] = (json.items || []).map((item: any) => ({
+            id: item.id,
+            platform: 'youtube',
+            type: 'video',
+            author: {
+              id: item.snippet.channelId,
+              name: item.snippet.channelTitle,
+              username: item.snippet.channelTitle,
+              avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(item.snippet.channelTitle)}&background=ff0000&color=fff&bold=true`,
+              verified: true,
+              profileUrl: `https://www.youtube.com/channel/${item.snippet.channelId}`,
+            },
+            title: item.snippet.title,
+            text: item.snippet.description || '',
+            createdAt: item.snippet.publishedAt,
+            stats: {
+              views: parseInt(item.statistics?.viewCount || '0', 10),
+              likes: parseInt(item.statistics?.likeCount || '0', 10),
+              comments: parseInt(item.statistics?.commentCount || '0', 10),
+            },
+            media: [
+              {
+                type: 'video',
+                url: `https://www.youtube.com/watch?v=${item.id}`,
+                previewUrl: item.snippet.thumbnails?.maxres?.url || item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.medium?.url,
+                duration: this.formatDuration(item.contentDetails?.duration),
+                aspectRatio: '16:9',
+                embedId: item.id,
+              },
+            ],
+            postUrl: `https://www.youtube.com/watch?v=${item.id}`,
+          }));
+
+          if (posts.length > 0) {
+            cacheManager.set(cacheKey, posts, 'live');
+            return { platform: 'youtube', posts, source: 'live' };
+          }
+        }
+      } catch (e) {}
+    }
+
+    try {
+      // Filtre de recherche YouTube encodé : tri par nombre de vues + mises en ligne cette semaine + vidéos uniquement
+      const MOST_VIEWED_THIS_WEEK = 'CAMSBAgDEAE=';
+      const posts = await this.scrapeDirectYouTube('le', false, MOST_VIEWED_THIS_WEEK);
+      if (posts.length > 0) {
+        cacheManager.set(cacheKey, posts, 'live');
+        return { platform: 'youtube', posts, source: 'live' };
+      }
+    } catch (err: any) {
+      console.warn('[YouTubeService] Erreur tendances :', err.message);
+    }
+
+    return { platform: 'youtube', posts: [], source: 'live', message: 'Impossible de charger les tendances YouTube.' };
+  }
+
+  /**
    * Recherche directe sans clé API
    */
-  private async scrapeDirectYouTube(query: string, isShorts = false): Promise<SocialPost[]> {
-    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + (isShorts ? ' #shorts' : ''))}`;
+  private async scrapeDirectYouTube(query: string, isShorts = false, searchFilter?: string): Promise<SocialPost[]> {
+    let searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + (isShorts ? ' #shorts' : ''))}`;
+    if (searchFilter) {
+      searchUrl += `&sp=${encodeURIComponent(searchFilter)}`;
+    }
     const res = await fetch(searchUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',

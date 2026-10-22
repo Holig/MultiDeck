@@ -12,6 +12,9 @@ import { api } from '../services/api';
 import { SupportedLanguage, getTranslation } from '../i18n/translations';
 
 interface DeckContextType {
+  // Signal incrémenté pour demander à toutes les colonnes de s'actualiser (clic sur le logo)
+  refreshAllSignal: number;
+  refreshAllColumns: () => void;
   columns: ColumnConfig[];
   filteredColumns: ColumnConfig[];
   activePlatformFilter: Platform | 'all';
@@ -137,6 +140,8 @@ export const DeckProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [selectedAuthPlatform, setSelectedAuthPlatform] = useState<Platform>('twitter');
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
+  const [refreshAllSignal, setRefreshAllSignal] = useState(0);
+  const refreshAllColumns = () => setRefreshAllSignal((n) => n + 1);
 
   // Langue de l'interface & Traduction
   const [language, setLanguageState] = useState<SupportedLanguage>(() => {
@@ -351,6 +356,8 @@ export const DeckProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSettingsModalOpen,
         isInfoModalOpen,
         setIsInfoModalOpen,
+        refreshAllSignal,
+        refreshAllColumns,
         theme,
         setTheme,
         language,

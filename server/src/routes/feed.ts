@@ -9,8 +9,17 @@ import { redditService } from '../services/redditService';
 import { cacheManager } from '../cacheManager';
 import { playwrightManager } from '../playwrightManager';
 import { Platform, FeedResponse } from '../types';
+import { isPlatform, escapeHtml } from '../security';
 
 const router = Router();
+
+// Toute route /:platform/... n'accepte qu'une plateforme connue
+router.param('platform', (req: Request, res: Response, next, value) => {
+  if (!isPlatform(value)) {
+    return res.status(400).json({ error: 'Plateforme inconnue' });
+  }
+  return next();
+});
 
 // GET /api/feed/:platform/user?id={username}
 router.get('/:platform/user', async (req: Request, res: Response) => {
@@ -132,7 +141,7 @@ router.get('/:platform/home', async (req: Request, res: Response) => {
         const filter = mode === 'sub_shorts' ? 'shorts' : (mode === 'sub_videos' ? 'videos' : 'all');
         feed = await youtubeService.getSubscriptionsFeed('recent', filter, forceRefresh);
       } else {
-        feed = await youtubeService.searchVideos('Tendance', false, forceRefresh);
+        feed = await youtubeService.getTrendingFeed(forceRefresh);
       }
     } else if (platform === 'instagram') {
       feed = await instagramService.getHomeFeed(mode, forceRefresh);
@@ -204,7 +213,7 @@ router.get('/:platform/shorts', async (req: Request, res: Response) => {
     } else if (platform === 'tiktok') {
       feed = await tiktokService.searchHashtag(query, forceRefresh);
     } else if (platform === 'instagram') {
-      feed = await instagramService.getUserPosts('reels', forceRefresh);
+      feed = await instagramService.getReelsFeed(forceRefresh);
     } else {
       feed = await twitterService.searchFeed(`${query} filter:media`, forceRefresh);
     }
@@ -219,14 +228,16 @@ router.get('/:platform/shorts', async (req: Request, res: Response) => {
 router.get('/viewer/twitter', (req: Request, res: Response) => {
   const query = ((req.query.q as string) || '#MercatOM').trim();
   const cleanQ = query.startsWith('#') ? query : `#${query}`;
-  const encodedQ = encodeURIComponent(cleanQ);
+  // encodeURIComponent laisse passer ' ( ) ! * : on les encode aussi car la valeur est insérée dans des chaînes JS
+  const encodedQ = encodeURIComponent(cleanQ).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  const safeQ = escapeHtml(cleanQ);
 
   const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Viewer X - ${cleanQ}</title>
+  <title>Viewer X - ${safeQ}</title>
   <style>
     * { box-sizing: border-box; }
     body, html {
@@ -255,7 +266,7 @@ router.get('/viewer/twitter', (req: Request, res: Response) => {
 </head>
 <body>
   <div class="top-bar">
-    <div>Fil X : <span class="query-tag">${cleanQ}</span></div>
+    <div>Fil X : <span class="query-tag">${safeQ}</span></div>
     <div style="display: flex; gap: 4px;">
       <button class="mode-btn active" id="btn-nitter" onclick="switchMode('nitter')">Mode Nitter Proxy</button>
       <button class="mode-btn" id="btn-widget" onclick="switchMode('widget')">Widget X</button>
@@ -329,8 +340,12 @@ router.post('/action', async (req: Request, res: Response) => {
 
     if (platform === 'reddit') {
       if (action === 'like') {
-        const dir = value ? 1 : 0;
-        await redditService.vote(postId, dir);
+        // Vote Reddit : 1 = upvote, -1 = downvote, 0 = annulation (booléen accepté pour compatibilité)
+        const dir = typeof value === 'number' ? Math.max(-1, Math.min(1, Math.round(value))) : (value ? 1 : 0);
+        const ok = await redditService.vote(postId, dir);
+        if (!ok) {
+          return res.json({ success: false, platform, postId, action, message: 'Reddit a refusé le vote (session expirée ?)' });
+        }
       } else if (action === 'reply' && text) {
         await redditService.submitComment(postId, text);
       }

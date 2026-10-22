@@ -2,6 +2,17 @@ import { playwrightManager } from '../playwrightManager';
 import { cacheManager } from '../cacheManager';
 import { SocialPost, FeedResponse, SocialAuthor } from '../types';
 
+// Endpoints renvoyant le contenu réel de chaque page ; les autres "item_list" (stories, reposts,
+// explore/prefetch, recommandations latérales) ne correspondent pas au flux demandé
+const TIKTOK_ENDPOINTS = {
+  user: ['/api/post/item_list/'],
+  for_you: ['/api/recommend/item_list/', '/api/preload/item_list/'],
+  following: ['/api/following/item_list/'],
+  search: ['/api/search/general/full/', '/api/search/item/full/', '/api/challenge/item_list/'],
+};
+
+const matchesEndpoint = (url: string, endpoints: string[]) => endpoints.some((e) => url.includes(e));
+
 export class TikTokService {
   /**
    * Convertit un objet vidéo TikTok (API JSON) en SocialPost standard
@@ -86,7 +97,7 @@ export class TikTokService {
         page.on('response', async (res) => {
           try {
             const url = res.url();
-            if (url.includes('/api/post/item_list/') || url.includes('/item_list')) {
+            if (matchesEndpoint(url, TIKTOK_ENDPOINTS.user)) {
               const ct = res.headers()['content-type'] || '';
               if (ct.includes('application/json')) {
                 const json = await res.json();
@@ -112,7 +123,13 @@ export class TikTokService {
           await page.close();
         }
 
-        return captured;
+        const unique = new Map<string, SocialPost>();
+        for (const p of captured) {
+          if (!unique.has(p.id)) unique.set(p.id, p);
+        }
+        const all = Array.from(unique.values());
+        const ownVideos = all.filter((p) => p.author.username.toLowerCase() === cleanUser.toLowerCase());
+        return ownVideos.length > 0 ? ownVideos : all;
       });
 
       if (posts.length > 0) {
@@ -153,13 +170,7 @@ export class TikTokService {
         page.on('response', async (res) => {
           try {
             const url = res.url();
-            if (
-              url.includes('/api/search/general/full/') ||
-              url.includes('/api/search/item/full/') ||
-              url.includes('/api/challenge/item_list/') ||
-              url.includes('/api/prefetch/explore/item_list/') ||
-              url.includes('/item_list')
-            ) {
+            if (matchesEndpoint(url, TIKTOK_ENDPOINTS.search)) {
               const ct = res.headers()['content-type'] || '';
               if (ct.includes('application/json')) {
                 const json = await res.json();
@@ -234,7 +245,7 @@ export class TikTokService {
         page.on('response', async (res) => {
           try {
             const url = res.url();
-            if (url.includes('/api/recommend/item_list/') || url.includes('/api/prefetch/explore/item_list/') || url.includes('/item_list')) {
+            if (matchesEndpoint(url, mode === 'following' ? TIKTOK_ENDPOINTS.following : TIKTOK_ENDPOINTS.for_you)) {
               const ct = res.headers()['content-type'] || '';
               if (ct.includes('application/json')) {
                 const json = await res.json();

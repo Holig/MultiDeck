@@ -2,6 +2,8 @@ import { playwrightManager } from '../playwrightManager';
 import { cacheManager } from '../cacheManager';
 import { SocialPost, FeedResponse, SocialAuthor, SocialMedia, ThreadResponse, QuotedPost } from '../types';
 
+const REDDIT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0';
+
 export class RedditService {
   private threadCache = new Map<string, { data: ThreadResponse; timestamp: number }>();
   private sessionImportAttempted = false;
@@ -187,6 +189,8 @@ export class RedditService {
         linkFlair: data.link_flair_text,
         upvoteRatio: data.upvote_ratio,
         domain: data.domain,
+        // Vote de l'utilisateur connecté : true = upvote, false = downvote, null = aucun
+        userVote: data.likes === true ? 1 : data.likes === false ? -1 : 0,
       },
     };
   }
@@ -493,25 +497,84 @@ export class RedditService {
    */
   public async vote(id: string, dir: number): Promise<boolean> {
     await this.ensureSession();
-    const cookieHeader = this.getCookieHeader();
     const cleanId = id.startsWith('t3_') || id.startsWith('t1_') ? id : `t3_${id}`;
 
+    // Posts : même canal que le site Reddit actuel (GraphQL "UpdatePostVoteState")
+    if (cleanId.startsWith('t3_')) {
+      const ok = await this.votePostGraphQL(cleanId, dir);
+      if (ok) return true;
+    }
+
+    // Repli (et commentaires) : ancienne API /api/vote
     try {
       const response = await fetch('https://www.reddit.com/api/vote', {
         method: 'POST',
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+          'User-Agent': REDDIT_UA,
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Cookie': cookieHeader,
+          'Cookie': this.getCookieHeader(),
         },
         body: new URLSearchParams({ id: cleanId, dir: dir.toString() }).toString(),
       });
-      return response.ok;
+      // Reddit peut répondre 200 tout en refusant le vote (erreurs dans le corps JSON)
+      const body = await response.text().catch(() => '');
+      let refused = !response.ok;
+      try {
+        const errors = JSON.parse(body)?.json?.errors;
+        if (Array.isArray(errors) && errors.length > 0) refused = true;
+      } catch {}
+      console.log(`[RedditService] Vote ${dir} ${cleanId} (API classique) : HTTP ${response.status} ${refused ? 'refusé' : 'OK'}`);
+      return !refused;
     } catch (err: any) {
       console.error('[RedditService] Erreur vote :', err.message);
       return false;
     }
   }
+
+  // Jeton CSRF exigé par l'API GraphQL du site Reddit (fourni par Reddit dans un cookie au chargement d'une page)
+  private csrfToken: string | null = null;
+
+  private async getCsrfToken(forceRenew = false): Promise<string | null> {
+    if (this.csrfToken && !forceRenew) return this.csrfToken;
+    try {
+      const res = await fetch('https://www.reddit.com/', {
+        headers: { 'User-Agent': REDDIT_UA, 'Cookie': this.getCookieHeader() },
+      });
+      const match = res.headers.getSetCookie().join(';').match(/csrf_token=([^;]+)/);
+      this.csrfToken = match ? match[1] : null;
+    } catch {
+      this.csrfToken = null;
+    }
+    return this.csrfToken;
+  }
+
+  private async votePostGraphQL(postId: string, dir: number, retry = true): Promise<boolean> {
+    const csrf = await this.getCsrfToken(!retry);
+    if (!csrf) return false;
+    const voteState = dir > 0 ? 'UP' : dir < 0 ? 'DOWN' : 'NONE';
+
+    try {
+      const res = await fetch('https://www.reddit.com/svc/shreddit/graphql', {
+        method: 'POST',
+        headers: {
+          'User-Agent': REDDIT_UA,
+          'Content-Type': 'application/json',
+          'Cookie': `${this.getCookieHeader()}; csrf_token=${csrf}`,
+        },
+        body: JSON.stringify({ operation: 'UpdatePostVoteState', variables: { input: { postId, voteState } }, csrf_token: csrf }),
+      });
+      const json: any = await res.json().catch(() => null);
+      const ok = res.ok && json?.data?.updatePostVoteState?.ok === true;
+      console.log(`[RedditService] Vote ${voteState} ${postId} : HTTP ${res.status} ${ok ? 'OK' : 'refusé'}`);
+      // Jeton expiré : un nouvel essai avec un jeton renouvelé
+      if (!ok && retry) return this.votePostGraphQL(postId, dir, false);
+      return ok;
+    } catch (err: any) {
+      console.error('[RedditService] Erreur vote GraphQL :', err.message);
+      return false;
+    }
+  }
+
 
   /**
    * Publie un commentaire en réponse sur Reddit

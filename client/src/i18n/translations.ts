@@ -57,6 +57,7 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
 
     // Colonnes
     'column.refresh': 'Actualiser les publications',
+    'column.scrollTop': 'Revenir en haut',
     'column.pause': 'Mettre le flux en pause',
     'column.resume': 'Reprendre le rafraîchissement',
     'column.moveLeft': 'Déplacer à gauche',
@@ -152,6 +153,7 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
 
     // Columns
     'column.refresh': 'Refresh posts',
+    'column.scrollTop': 'Back to top',
     'column.pause': 'Pause feed',
     'column.resume': 'Resume feed',
     'column.moveLeft': 'Move left',
@@ -247,6 +249,7 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
 
     // Columns
     'column.refresh': 'Actualizar publicaciones',
+    'column.scrollTop': 'Volver arriba',
     'column.pause': 'Pausar feed',
     'column.resume': 'Reanudar feed',
     'column.moveLeft': 'Mover a la izquierda',
@@ -342,6 +345,7 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
 
     // Columns
     'column.refresh': 'Beiträge aktualisieren',
+    'column.scrollTop': 'Nach oben',
     'column.pause': 'Feed pausieren',
     'column.resume': 'Feed fortsetzen',
     'column.moveLeft': 'Nach links verschieben',
@@ -437,6 +441,7 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
 
     // Columns
     'column.refresh': 'Aggiorna post',
+    'column.scrollTop': 'Torna su',
     'column.pause': 'Metti in pausa il feed',
     'column.resume': 'Riprendi il feed',
     'column.moveLeft': 'Sposta a sinistra',
@@ -532,6 +537,7 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
 
     // Columns
     'column.refresh': 'Atualizar publicações',
+    'column.scrollTop': 'Voltar ao topo',
     'column.pause': 'Pausar feed',
     'column.resume': 'Retomar feed',
     'column.moveLeft': 'Mover para esquerda',
@@ -627,6 +633,7 @@ export const translations: Record<SupportedLanguage, Record<string, string>> = {
 
     // Columns
     'column.refresh': '投稿を更新',
+    'column.scrollTop': 'トップに戻る',
     'column.pause': '一時停止',
     'column.resume': '再開',
     'column.moveLeft': '左へ移動',

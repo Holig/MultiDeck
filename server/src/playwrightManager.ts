@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { PlatformAuthStatus, SystemStatus, BrowserEngine, Platform } from './types';
 import { youtubeService } from './services/youtubeService';
+import { PLATFORMS, isPlatform, isEngine } from './security';
 
 // Empêche Playwright Firefox d'interagir avec les instances Firefox déjà ouvertes par l'utilisateur
 process.env.MOZ_NO_REMOTE = '1';
@@ -10,10 +11,14 @@ process.env.MOZ_NO_REMOTE = '1';
 export class PlaywrightManager {
   private contexts: Map<string, BrowserContext> = new Map();
   private userDataDir: string;
-  private currentEngine: BrowserEngine = 'chromium';
+  // Moteur choisi lors de la dernière connexion interactive, mémorisé par plateforme
+  private platformEngines: Map<Platform, BrowserEngine> = new Map();
   private openInteractivePlatforms: Set<string> = new Set();
   private queueLocks: Map<string, Promise<void>> = new Map();
   private installingEngines: Map<BrowserEngine, Promise<void>> = new Map();
+  // Lancements en cours : deux appels simultanés partagent le même lancement au lieu
+  // d'ouvrir deux fois le même profil (ce qui provoque "Firefox is already running")
+  private pendingLaunches: Map<string, Promise<BrowserContext>> = new Map();
 
   constructor() {
     this.userDataDir = path.resolve(process.cwd(), 'user_data');
@@ -56,7 +61,7 @@ export class PlaywrightManager {
     } catch (e) {}
   }
 
-  private getEngineLauncher(engine: BrowserEngine = this.currentEngine) {
+  private getEngineLauncher(engine: BrowserEngine = 'chromium') {
     switch (engine) {
       case 'firefox':
         return firefox;
@@ -73,7 +78,7 @@ export class PlaywrightManager {
     if (platform === 'twitter' || platform === 'instagram' || platform === 'threads' || platform === 'reddit') {
       return 'firefox';
     }
-    return this.currentEngine;
+    return this.platformEngines.get(platform) || 'chromium';
   }
 
   /**
@@ -163,6 +168,19 @@ export class PlaywrightManager {
     const existing = this.contexts.get(key);
     if (existing) return existing;
 
+    const pending = this.pendingLaunches.get(key);
+    if (pending) return pending;
+
+    const launch = this.launchContext(platform, engine, key, options.headless ?? true);
+    this.pendingLaunches.set(key, launch);
+    try {
+      return await launch;
+    } finally {
+      this.pendingLaunches.delete(key);
+    }
+  }
+
+  private async launchContext(platform: Platform, engine: BrowserEngine, key: string, headless: boolean): Promise<BrowserContext> {
     const engineLauncher = this.getEngineLauncher(engine);
     const platformDataDir = path.join(this.userDataDir, platform, engine);
 
@@ -184,13 +202,13 @@ export class PlaywrightManager {
 
     try {
       const context = await engineLauncher.launchPersistentContext(platformDataDir, {
-        headless: options.headless ?? true,
+        headless,
         viewport: { width: 1280, height: 800 },
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         args: engine === 'chromium' ? [
           '--disable-blink-features=AutomationControlled',
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
+          // Le bac à sable Chromium n'est désactivé que sous Linux (conteneurs Docker / root), jamais sous Windows
+          ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-setuid-sandbox'] : []),
           '--disk-cache-size=52428800',
           '--media-cache-size=26214400',
         ] : [
@@ -228,7 +246,7 @@ export class PlaywrightManager {
         try {
           await this.ensureBrowserInstalled(engine);
           const retryContext = await engineLauncher.launchPersistentContext(platformDataDir, {
-            headless: options.headless ?? true,
+            headless,
             viewport: { width: 1280, height: 800 },
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
             args: engine === 'chromium' ? [
@@ -441,7 +459,7 @@ export class PlaywrightManager {
    */
   public async launchInteractiveLogin(platform: Platform, engine: BrowserEngine = 'chromium'): Promise<{ success: boolean; message: string }> {
     await this.closePlatformContext(platform);
-    this.currentEngine = engine;
+    this.platformEngines.set(platform, engine);
     this.openInteractivePlatforms.add(platform);
 
     let targetUrl = 'https://x.com/login';
@@ -587,7 +605,13 @@ export class PlaywrightManager {
     platform: Platform | 'all',
     engine: BrowserEngine | 'all' = 'all'
   ): Record<string, { success: boolean; browserName?: string; cookiesCount: number; cookies: any[]; message: string }> {
-    const { execSync } = require('child_process');
+    // Liste blanche stricte : ces valeurs sont transmises au script Python
+    if (!(platform === 'all' || isPlatform(platform)) || !(engine === 'all' || isEngine(engine))) {
+      console.warn("[PlaywrightManager] Paramètres d'extraction refusés :", platform, engine);
+      return {};
+    }
+
+    const { execFileSync } = require('child_process');
     let scriptPath = path.join(__dirname, 'cookie_extractor.py');
     if (!fs.existsSync(scriptPath)) {
       scriptPath = path.join(__dirname, '..', 'src', 'cookie_extractor.py');
@@ -599,12 +623,21 @@ export class PlaywrightManager {
     }
 
     try {
-      const cmd = `python "${scriptPath}" ${platform} ${engine}`;
-      const output = execSync(cmd, { encoding: 'utf-8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'] });
+      // execFileSync : arguments passés directement au processus, sans interprétation par un shell
+      const output = execFileSync('python', [scriptPath, platform, engine], {
+        encoding: 'utf-8',
+        timeout: 15000,
+        stdio: ['pipe', 'pipe', 'ignore'],
+        windowsHide: true,
+      });
       const parsed = JSON.parse(output.trim());
       return parsed;
     } catch (e: any) {
-      console.error('[PlaywrightManager] Erreur exécution cookie_extractor.py :', e.message);
+      if (e.code === 'ENOENT') {
+        console.error("[PlaywrightManager] Python est introuvable dans le PATH : l'import automatique des cookies nécessite Python 3.");
+      } else {
+        console.error('[PlaywrightManager] Erreur exécution cookie_extractor.py :', e.message);
+      }
       return {};
     }
   }
@@ -814,8 +847,7 @@ export class PlaywrightManager {
     const details: Record<string, string> = {};
     let total = 0;
 
-    const platforms: Platform[] = ['twitter', 'instagram', 'tiktok', 'youtube'];
-    for (const p of platforms) {
+    for (const p of PLATFORMS) {
       const pDir = path.join(this.userDataDir, p);
       if (fs.existsSync(pDir)) {
         const sz = this.getDirectorySize(pDir);
@@ -870,8 +902,7 @@ export class PlaywrightManager {
       }
     };
 
-    const platforms: Platform[] = ['twitter', 'instagram', 'tiktok', 'youtube'];
-    for (const p of platforms) {
+    for (const p of PLATFORMS) {
       const base = path.join(this.userDataDir, p);
       if (!fs.existsSync(base)) continue;
 

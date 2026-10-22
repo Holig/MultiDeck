@@ -13,9 +13,12 @@ export class CacheManager {
   private readonly defaultTtlMs: number;
   private readonly minCooldownMs: number;
 
-  constructor(defaultTtlSeconds: number = 240, minCooldownSeconds: number = 30) {
+  private readonly maxEntries: number;
+
+  constructor(defaultTtlSeconds: number = 240, minCooldownSeconds: number = 30, maxEntries: number = 500) {
     this.defaultTtlMs = defaultTtlSeconds * 1000;
     this.minCooldownMs = minCooldownSeconds * 1000;
+    this.maxEntries = maxEntries;
   }
 
   public get(key: string): CacheEntry | null {
@@ -42,6 +45,8 @@ export class CacheManager {
   }
 
   public set(key: string, data: SocialPost[], source: 'live' | 'cache' | 'demo' = 'live', nextCursor?: string): void {
+    // Réinsertion en fin de Map : l'ordre d'insertion sert d'ordre d'ancienneté pour l'éviction
+    this.cache.delete(key);
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
@@ -49,6 +54,13 @@ export class CacheManager {
       nextCursor,
     });
     this.lastFetchTime.set(key, Date.now());
+
+    // Éviction des entrées les plus anciennes au-delà de la limite (évite une croissance mémoire illimitée)
+    while (this.cache.size > this.maxEntries) {
+      const oldestKey = this.cache.keys().next().value as string;
+      this.cache.delete(oldestKey);
+      this.lastFetchTime.delete(oldestKey);
+    }
   }
 
   public canFetch(key: string): { allowed: boolean; waitSeconds: number } {

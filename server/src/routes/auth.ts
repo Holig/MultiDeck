@@ -2,8 +2,24 @@ import { Router, Request, Response } from 'express';
 import { playwrightManager } from '../playwrightManager';
 import { youtubeService } from '../services/youtubeService';
 import { Platform, BrowserEngine } from '../types';
+import { isPlatform, isEngine } from '../security';
 
 const router = Router();
+
+// Toute route /auth/:platform/... n'accepte qu'une plateforme connue (empêche l'injection de chemins / commandes)
+router.param('platform', (req: Request, res: Response, next, value) => {
+  if (!isPlatform(value)) {
+    return res.status(400).json({ success: false, message: 'Plateforme inconnue' });
+  }
+  return next();
+});
+
+// Moteur demandé (corps ou query) : uniquement une valeur connue, sinon undefined
+function readEngine(req: Request): BrowserEngine | 'all' | undefined {
+  const raw = req.body?.engine || req.query?.engine;
+  if (raw === 'all' || isEngine(raw)) return raw;
+  return undefined;
+}
 
 // GET /api/status - Statut global des 4 plateformes
 router.get('/status', async (_req: Request, res: Response) => {
@@ -19,7 +35,8 @@ router.get('/status', async (_req: Request, res: Response) => {
 router.post('/auth/:platform/login', async (req: Request, res: Response) => {
   try {
     const platform = req.params.platform as Platform;
-    const engine: BrowserEngine = req.body?.engine || 'chromium';
+    const requested = readEngine(req);
+    const engine: BrowserEngine = requested && requested !== 'all' ? requested : 'chromium';
 
     if (!['twitter', 'instagram', 'tiktok', 'threads', 'reddit', 'youtube'].includes(platform)) {
       return res.status(400).json({ success: false, message: 'Plateforme non supportée pour la connexion Playwright' });
@@ -64,7 +81,7 @@ router.post('/auth/:platform/cookies', async (req: Request, res: Response) => {
 router.post('/auth/:platform/auto-import', async (req: Request, res: Response) => {
   try {
     const platform = req.params.platform as Platform;
-    const engine = (req.body?.engine || req.query?.engine || 'all') as BrowserEngine | 'all';
+    const engine = readEngine(req) || 'all';
     const result = await playwrightManager.autoImportCookies(platform, engine);
     return res.json(result);
   } catch (error: any) {
@@ -75,7 +92,7 @@ router.post('/auth/:platform/auto-import', async (req: Request, res: Response) =
 // POST /api/auth/auto-import-all - Importation globale 1-clic pour tous les réseaux (X, Instagram, TikTok)
 router.post('/auth/auto-import-all', async (req: Request, res: Response) => {
   try {
-    const engine = (req.body?.engine || req.query?.engine || 'all') as BrowserEngine | 'all';
+    const engine = readEngine(req) || 'all';
     const result = await playwrightManager.autoImportAll(engine);
     return res.json(result);
   } catch (error: any) {

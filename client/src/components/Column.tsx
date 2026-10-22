@@ -16,6 +16,7 @@ import {
   Plus,
   Loader2,
   ArrowDown,
+  ArrowUp,
   Palette,
   RotateCcw
 } from 'lucide-react';
@@ -28,10 +29,13 @@ interface ColumnProps {
   column: ColumnConfig;
   isFirst: boolean;
   isLast: boolean;
+  // Colonne ciblée par la navigation clavier (surbrillance)
+  isActive?: boolean;
+  onActivate?: () => void;
 }
 
-export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
-  const { removeColumn, updateColumn, moveColumn, setIsAuthModalOpen, setSelectedAuthPlatform, t } = useDeck();
+export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast, isActive = false, onActivate }) => {
+  const { removeColumn, updateColumn, moveColumn, setIsAuthModalOpen, setSelectedAuthPlatform, refreshAllSignal, t } = useDeck();
   
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -52,8 +56,13 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
   const loadingMoreRef = useRef(false);
 
   // Changement dynamique du mode de fil (X ou Instagram) avec rechargement immédiat
-  const changeFeedMode = async (mode: FeedMode) => {
+  const changeFeedMode = (mode: FeedMode) => {
     const isSameMode = (column.feedMode || 'for_you') === mode;
+    // Même onglet : simple actualisation forcée
+    if (isSameMode) {
+      loadFeed(true);
+      return;
+    }
     let newTitle = column.title;
 
     if (column.platform === 'twitter') {
@@ -65,6 +74,14 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
       newTitle = titles[mode] || 'X : Fil d’actualité';
     } else if (column.platform === 'instagram') {
       newTitle = mode === 'following_latest' ? 'Instagram : Suivi(e)s' : 'Instagram : Pour vous';
+    } else if (column.platform === 'reddit' && column.username) {
+      // Colonne subreddit : garder le subreddit, l'onglet ne change que le tri (Hot / Top / New)
+      const suffixes: Partial<Record<FeedMode, string>> = {
+        for_you: '',
+        following_top: ' (Top)',
+        following_latest: ' (Récents)',
+      };
+      newTitle = `Reddit : r/${column.username}${suffixes[mode] || ''}`;
     } else if (column.platform === 'reddit') {
       const titles: Partial<Record<FeedMode, string>> = {
         for_you: 'Reddit : Mes Abonnements',
@@ -74,27 +91,13 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
       newTitle = titles[mode] || 'Reddit : Fil';
     }
 
-    setPosts([]); // Réinitialiser immédiatement les posts visibles
+    // Réinitialiser immédiatement les posts visibles ; le changement de feedMode relance loadFeed
+    // avec tous les paramètres de la colonne (subreddit, compte...), sans requête concurrente
+    setPosts([]);
     setNextCursor(undefined);
     setHasMore(true);
-    setIsLoading(true);
     setError(null);
     updateColumn(column.id, { feedMode: mode, title: newTitle });
-
-    try {
-      const res = await api.getHomeFeed(column.platform, mode, isSameMode);
-      setPosts(res.posts || []);
-      setNextCursor(res.nextCursor);
-      setHasMore(res.nextCursor ? true : (res.posts && res.posts.length > 0));
-      setSourceInfo({ source: res.source, message: res.message });
-      setSecondsUntilRefresh(column.refreshInterval);
-    } catch (err: any) {
-      console.error(`Erreur chargement mode ${mode} :`, err);
-      setError(err.message || 'Impossible de charger ce fil');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
   };
 
   // Chargement du flux selon la plateforme et le type de contenu
@@ -211,8 +214,11 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
 
   // Détection du scroll en bas de colonne (molette de la souris ou défilement tactile)
   const lastScrollTop = useRef(0);
+  // Colonne défilée : l'icône du réseau devient un bouton « Revenir en haut »
+  const [isScrolled, setIsScrolled] = useState(false);
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
+    if (el) setIsScrolled(el.scrollTop > 0);
     if (!el || isLoadingMore || isLoading || !hasMore) return;
 
     // S'assurer que l'utilisateur scrolle bien vers le bas (et pas vers le haut)
@@ -227,9 +233,21 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
     }
   }, [loadMorePosts, isLoadingMore, isLoading, hasMore]);
 
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  const scrollToTop = useCallback(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
   useEffect(() => {
     loadFeed(false);
   }, [loadFeed]);
+
+  // Actualisation globale (clic sur le logo MultiDeck) : équivalent du bouton Actualiser de la colonne
+  useEffect(() => {
+    if (refreshAllSignal > 0) loadFeed(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshAllSignal]);
 
   // Minuteur de rafraîchissement automatique
   useEffect(() => {
@@ -268,7 +286,8 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
         column.feedMode === 'sub_all' ||
         column.feedMode === 'sub_videos' ||
         column.feedMode === 'sub_shorts' ||
-        (column.platform === 'youtube' && column.contentType === 'home') ||
+        // YouTube "Tendances" (home + for_you) reste classé par popularité
+        (column.platform === 'youtube' && column.contentType === 'home' && (column.feedMode || 'for_you') !== 'for_you') ||
         (column.platform === 'bluesky') ||
         (column.contentType === 'user');
 
@@ -355,7 +374,10 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
 
   return (
     <div 
-      className={`h-full flex flex-col border-r theme-border ${hasCustomBg ? '' : 'theme-bg-column'} ${widthClasses[column.width]} flex-shrink-0 transition-colors duration-150`}
+      ref={rootRef}
+      data-deck-column
+      onMouseDown={onActivate}
+      className={`h-full flex flex-col border-r theme-border ${hasCustomBg ? '' : 'theme-bg-column'} ${widthClasses[column.width]} flex-shrink-0 transition-colors duration-150 ${isActive ? 'ring-2 ring-inset ring-[#1d9bf0]/50' : ''}`}
       style={hasCustomBg ? { backgroundColor: column.backgroundColor } : undefined}
     >
       {/* En-tête de la colonne */}
@@ -364,9 +386,22 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
       >
         {/* Infos à gauche */}
         <div className="flex items-center gap-2 min-w-0">
-          <div className="p-1.5 rounded-lg theme-bg-surface flex-shrink-0">
-            {getPlatformIcon(column.platform)}
-          </div>
+          {isScrolled ? (
+            <button
+              type="button"
+              onClick={scrollToTop}
+              title={t('column.scrollTop')}
+              aria-label={t('column.scrollTop')}
+              className="group relative p-1.5 rounded-lg theme-bg-surface flex-shrink-0 cursor-pointer ring-1 ring-[#1d9bf0]/40 hover:ring-[#1d9bf0] transition-all"
+            >
+              <span className="block group-hover:opacity-0 transition-opacity">{getPlatformIcon(column.platform)}</span>
+              <ArrowUp className="w-4 h-4 text-[#1d9bf0] absolute inset-0 m-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+            </button>
+          ) : (
+            <div className="p-1.5 rounded-lg theme-bg-surface flex-shrink-0">
+              {getPlatformIcon(column.platform)}
+            </div>
+          )}
           <div className="min-w-0">
             <h2 className="text-sm font-bold theme-text-primary truncate leading-tight">
               {column.title}
@@ -522,7 +557,7 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
                 : 'theme-text-secondary hover:theme-text-primary hover:theme-bg-surface'
             }`}
           >
-            ✨ Abonnements
+            {column.username ? '🔥 Hot' : '✨ Abonnements'}
           </button>
           <button
             onClick={() => changeFeedMode('following_top')}
@@ -532,7 +567,7 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
                 : 'theme-text-secondary hover:theme-text-primary hover:theme-bg-surface'
             }`}
           >
-            🔥 Populaire
+            {column.username ? '🏆 Top' : '🔥 Populaire'}
           </button>
           <button
             onClick={() => changeFeedMode('following_latest')}
@@ -768,6 +803,7 @@ export const Column: React.FC<ColumnProps> = ({ column, isFirst, isLast }) => {
       {/* Zone de contenu scrollable avec détection molette/scroll infini */}
       <div 
         ref={scrollContainerRef}
+        data-column-scroll
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto overflow-x-hidden divide-y divide-[#38444d]/20 select-text"
       >

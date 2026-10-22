@@ -540,6 +540,10 @@ export class TwitterService {
                 if (feedMode === 'following_latest' && url.includes('HomeTimeline') && !url.includes('HomeLatestTimeline')) {
                   return;
                 }
+                // En mode Pour vous, ignorer le flux Abonnements chargé si X a mémorisé cet onglet comme dernier ouvert
+                if (feedMode === 'for_you' && url.includes('HomeLatestTimeline')) {
+                  return;
+                }
 
                 if (url.includes('Timeline') || url.includes('HomeLatestTimeline') || url.includes('HomeTimeline')) {
                   const json = await response.json();

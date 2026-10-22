@@ -28,6 +28,10 @@ MultiDeck est une application web locale qui agrège en temps réel des flux iss
   - Filtre textuel instantané dans chaque colonne.
   - Compte à rebours de rafraîchissement automatique indépendant.
   - Défilement infini et bouton « Afficher la suite » avec pagination dynamique.
+  - **Retour en haut** : dès qu'une colonne a défilé, l'icône du réseau dans son en-tête devient un bouton (flèche ↑ au survol) qui la ramène en haut.
+  - **Première / dernière colonne** : quand le deck défile horizontalement, un bouton « Dernière colonne » (en bas à droite) apparaît au début du deck, et un bouton « Première colonne » (en bas à gauche) une fois arrivé au bout.
+  - **Navigation au clavier** : `←` `→` changent de colonne active (`←` depuis la première colonne sélectionne la barre latérale, parcourue avec `Tab` ou `↑` `↓`), `↑` `↓` / `Page ↑` `Page ↓` la font défiler, `Tab` / `Maj+Tab` parcourent les boutons de la colonne active (`Entrée` pour activer), `T` remonte en haut, `Début` / `Fin` vont à la première / dernière colonne, `R` actualise tout.
+  - **Actualisation globale** : un clic sur le logo MultiDeck (barre latérale) actualise toutes les colonnes affichées, comme le bouton « Actualiser » de chacune.
 - **💬 Visionneuse de Discussions & Réponses (Thread Viewer) :**
   - Modal dédiée pour explorer l'arborescence complète d'un tweet, post Threads ou Bluesky avec ses réponses et publications citées.
 - **🌍 Internationalisation & Traduction Globale (i18n) :**

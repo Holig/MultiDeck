@@ -20,6 +20,8 @@ import {
 import { SocialPost } from '../../types';
 import { useDeck } from '../../context/DeckContext';
 import { api } from '../../services/api';
+import { canLike, canRepost, canOpenThread } from '../../services/capabilities';
+import { RedditVoteButtons } from './RedditVoteButtons';
 import { translateText } from '../../i18n/translations';
 
 interface PostCardProps {
@@ -541,15 +543,18 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
 
       {/* Barre de métriques et d'interactions directes */}
       <div className="mt-3 flex items-center justify-between theme-text-secondary text-xs pt-1 border-t theme-border-subtle">
-        {/* Likes / Upvote interactif */}
+        {/* Likes / Upvote interactif (Reddit, X) ; simple compteur ailleurs */}
+        {post.platform === 'reddit' ? (
+          <RedditVoteButtons post={post} />
+        ) : canLike(post.platform) ? (
         <button
           onClick={handleLike}
           className={`flex items-center gap-1.5 transition-all duration-150 group/like p-1 -m-1 rounded-md hover:bg-pink-500/10 ${
             isLiked 
-              ? (post.platform === 'reddit' ? 'text-[#ff4500]' : 'text-pink-500 font-semibold')
+              ? 'text-pink-500 font-semibold'
               : 'hover:text-pink-500'
           }`}
-          title={isLiked ? t('post.unlike') : (post.platform === 'reddit' ? t('post.upvote') : t('post.like'))}
+          title={isLiked ? t('post.unlike') : t('post.like')}
         >
           <Heart 
             className={`w-3.5 h-3.5 transition-transform duration-150 ${
@@ -558,9 +563,15 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
           />
           <span>{formatNumber(likesCount) || '0'}</span>
         </button>
+        ) : (
+          <div className="flex items-center gap-1.5 p-1 -m-1 cursor-default">
+            <Heart className="w-3.5 h-3.5" />
+            <span>{formatNumber(likesCount) || '0'}</span>
+          </div>
+        )}
 
         {/* Commentaires / Réponses (Ouvre la discussion complète + boîte de réponse) */}
-        {(post.stats.comments !== undefined || post.platform === 'bluesky' || post.platform === 'twitter' || post.platform === 'threads' || post.platform === 'reddit') && (
+        {canOpenThread(post.platform) ? (
           <button 
             onClick={(e) => {
               e.stopPropagation();
@@ -572,10 +583,15 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
             <MessageCircle className="w-3.5 h-3.5 group-hover/cmt:scale-110 transition-transform" />
             <span>{formatNumber(post.stats.comments) || '0'}</span>
           </button>
+        ) : post.stats.comments !== undefined && (
+          <div className="flex items-center gap-1.5 p-1 -m-1 cursor-default">
+            <MessageCircle className="w-3.5 h-3.5" />
+            <span>{formatNumber(post.stats.comments) || '0'}</span>
+          </div>
         )}
 
         {/* Partages / Retweets / Repost interactif */}
-        {(post.stats.sharesOrRetweets !== undefined || post.platform === 'twitter' || post.platform === 'threads' || post.platform === 'bluesky') && (
+        {canRepost(post.platform) ? (
           <button 
             onClick={handleRepost}
             className={`flex items-center gap-1.5 transition-all duration-150 p-1 -m-1 rounded-md hover:bg-emerald-500/10 group/repost ${
@@ -590,6 +606,11 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
             />
             <span>{formatNumber(repostsCount) || '0'}</span>
           </button>
+        ) : (post.stats.sharesOrRetweets !== undefined || post.platform === 'threads' || post.platform === 'bluesky') && (
+          <div className="flex items-center gap-1.5 p-1 -m-1 cursor-default">
+            <Repeat2 className="w-3.5 h-3.5" />
+            <span>{formatNumber(repostsCount) || '0'}</span>
+          </div>
         )}
 
         {/* Vues (si fournies) */}

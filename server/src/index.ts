@@ -1,6 +1,7 @@
+// Doit rester le premier import : les services lisent process.env dès leur chargement
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import net from 'net';
@@ -8,13 +9,13 @@ import http from 'http';
 import authRoutes from './routes/auth';
 import feedRoutes from './routes/feed';
 import { playwrightManager } from './playwrightManager';
-
-dotenv.config();
+import { requestGuard, corsOptions } from './security';
 
 const app = express();
 
 // Middlewares globaux
-app.use(cors({ origin: true, credentials: true }));
+app.use(requestGuard);
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Enregistrement des routes d'API

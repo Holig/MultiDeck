@@ -252,41 +252,6 @@ export class InstagramService {
         const page = await ctx.newPage();
         const capturedTimeline: SocialPost[] = [];
 
-        // Helper pour extraire récursivement les objets média des réponses JSON Instagram
-        const extractMediaNodes = (obj: any): any[] => {
-          const nodes: any[] = [];
-          if (!obj || typeof obj !== 'object') return nodes;
-
-          // Si c'est un post valide (avec ID/shortcode et auteur/caption/carrousel)
-          if (obj.media_or_ad) {
-            nodes.push(obj.media_or_ad);
-          } else if (obj.node && (obj.node.id || obj.node.shortcode) && (obj.node.user || obj.node.owner || obj.node.edge_media_to_caption || obj.node.caption || obj.node.carousel_media || obj.node.edge_sidecar_to_children)) {
-            nodes.push(obj.node);
-          } else if (obj.id && (obj.user || obj.owner || obj.caption || obj.edge_media_to_caption || obj.carousel_media || obj.edge_sidecar_to_children)) {
-            nodes.push(obj);
-          }
-
-          // Ne pas descendre dans les sous-structures internes d'un post pour éviter les doublons de carrousel
-          const blockedKeys = new Set([
-            'user', 'owner', 'caption', 'edge_media_to_caption',
-            'carousel_media', 'edge_sidecar_to_children', 'sidecar_children',
-            'image_versions2', 'video_versions', 'candidates', 'display_resources'
-          ]);
-
-          for (const key of Object.keys(obj)) {
-            if (blockedKeys.has(key)) continue;
-
-            if (Array.isArray(obj[key])) {
-              for (const item of obj[key]) {
-                nodes.push(...extractMediaNodes(item));
-              }
-            } else if (typeof obj[key] === 'object' && obj[key] !== null) {
-              nodes.push(...extractMediaNodes(obj[key]));
-            }
-          }
-          return nodes;
-        };
-
         // Interception des réponses timeline GraphQL & API
         page.on('response', async (response) => {
           try {
@@ -295,7 +260,7 @@ export class InstagramService {
               const contentType = response.headers()['content-type'] || '';
               if (contentType.includes('application/json')) {
                 const json = await response.json();
-                const mediaNodes = extractMediaNodes(json);
+                const mediaNodes = this.extractMediaNodes(json);
 
                 for (const mediaNode of mediaNodes) {
                   if (mediaNode && (mediaNode.id || mediaNode.code || mediaNode.shortcode)) {
@@ -368,6 +333,134 @@ export class InstagramService {
 
   public async getFollowingFeed(forceRefresh = false): Promise<FeedResponse> {
     return this.getHomeFeed('following_latest', forceRefresh);
+  }
+
+  /**
+   * Extrait récursivement les objets média des réponses JSON Instagram
+   */
+  private extractMediaNodes(obj: any): any[] {
+    const nodes: any[] = [];
+    if (!obj || typeof obj !== 'object') return nodes;
+
+    // Si c'est un post valide (avec ID/shortcode et auteur/caption/carrousel)
+    if (obj.media_or_ad) {
+      nodes.push(obj.media_or_ad);
+    } else if (obj.node && (obj.node.id || obj.node.shortcode) && (obj.node.user || obj.node.owner || obj.node.edge_media_to_caption || obj.node.caption || obj.node.carousel_media || obj.node.edge_sidecar_to_children)) {
+      nodes.push(obj.node);
+    } else if (obj.id && (obj.user || obj.owner || obj.caption || obj.edge_media_to_caption || obj.carousel_media || obj.edge_sidecar_to_children)) {
+      nodes.push(obj);
+    }
+
+    // Ne pas descendre dans les sous-structures internes d'un post pour éviter les doublons de carrousel
+    const blockedKeys = new Set([
+      'user', 'owner', 'caption', 'edge_media_to_caption',
+      'carousel_media', 'edge_sidecar_to_children', 'sidecar_children',
+      'image_versions2', 'video_versions', 'candidates', 'display_resources'
+    ]);
+
+    for (const key of Object.keys(obj)) {
+      if (blockedKeys.has(key)) continue;
+
+      if (Array.isArray(obj[key])) {
+        for (const item of obj[key]) {
+          nodes.push(...this.extractMediaNodes(item));
+        }
+      } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+        nodes.push(...this.extractMediaNodes(obj[key]));
+      }
+    }
+    return nodes;
+  }
+
+  /**
+   * Charge une page Instagram et collecte les médias des seules réponses GraphQL dont les clés
+   * correspondent au flux voulu (ex : clips pour les Reels, serp pour la recherche)
+   */
+  private async scrapeMediaPage(
+    targetUrl: string,
+    acceptedDataKeys: RegExp,
+    options: { videosOnly?: boolean; advanceWithKeyboard?: boolean } = {}
+  ): Promise<SocialPost[]> {
+    return playwrightManager.executeWithLock('instagram', async (ctx) => {
+      const page = await ctx.newPage();
+      const captured: SocialPost[] = [];
+
+      page.on('response', async (response) => {
+        try {
+          const url = response.url();
+          if (!url.includes('/graphql') && !url.includes('/api/v1/')) return;
+          const contentType = response.headers()['content-type'] || '';
+          if (!contentType.includes('application/json') && !contentType.includes('text/javascript')) return;
+
+          const json = await response.json();
+          const dataKeys = Object.keys(json?.data || {});
+          if (!dataKeys.some((k) => acceptedDataKeys.test(k))) return;
+
+          for (const mediaNode of this.extractMediaNodes(json.data)) {
+            if (!mediaNode || !(mediaNode.id || mediaNode.code || mediaNode.shortcode)) continue;
+            const post = this.parseTimelineMedia(mediaNode);
+            if (!post) continue;
+            if (options.videosOnly && post.type !== 'reel') continue;
+            if (!captured.some((p) => p.id === post.id || (p.postUrl && post.postUrl && p.postUrl === post.postUrl))) {
+              captured.push(post);
+            }
+          }
+        } catch (e) {}
+      });
+
+      try {
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        await page.waitForTimeout(4000);
+
+        // Chargement des lots suivants (le lecteur Reels avance au clavier, les grilles au défilement)
+        for (let i = 0; i < 5; i++) {
+          if (options.advanceWithKeyboard) {
+            await page.keyboard.press('ArrowDown').catch(() => {});
+            await page.mouse.move(640, 400).catch(() => {});
+            await page.mouse.wheel(0, 900).catch(() => {});
+          } else {
+            await page.evaluate(() => window.scrollBy(0, 1200));
+          }
+          await page.waitForTimeout(1200);
+        }
+      } finally {
+        await page.close();
+      }
+
+      return captured;
+    });
+  }
+
+  /**
+   * Flux Reels (onglet Reels d'Instagram)
+   */
+  public async getReelsFeed(forceRefresh = false): Promise<FeedResponse> {
+    const cacheKey = 'instagram:reels';
+    if (!forceRefresh) {
+      const cached = cacheManager.get(cacheKey);
+      if (cached) {
+        return { platform: 'instagram', posts: cached.data, source: 'cache', cachedAt: new Date(cached.timestamp).toISOString() };
+      }
+    }
+
+    const auth = await playwrightManager.checkSession('instagram');
+    if (!auth.isAuthenticated) {
+      return { platform: 'instagram', posts: [], source: 'live', message: 'Non connecté à Instagram. Cliquez sur l’icône Instagram dans la barre latérale pour vous connecter.' };
+    }
+
+    try {
+      const posts = await this.scrapeMediaPage('https://www.instagram.com/reels/', /clips|reels_units|reels_media/i, {
+        videosOnly: true,
+        advanceWithKeyboard: true,
+      });
+      if (posts.length > 0) {
+        cacheManager.set(cacheKey, posts, 'live');
+        return { platform: 'instagram', posts, source: 'live' };
+      }
+      return { platform: 'instagram', posts: [], source: 'live', message: 'Aucun Reel trouvé.' };
+    } catch (err: any) {
+      return { platform: 'instagram', posts: [], source: 'live', message: err.message || 'Erreur lors du chargement des Reels' };
+    }
   }
 
   private parseTimelineMedia(node: any): SocialPost | null {
@@ -776,7 +869,37 @@ export class InstagramService {
    */
   public async searchHashtag(tag: string, forceRefresh = false): Promise<FeedResponse> {
     const cleanTag = tag.replace('#', '').trim();
-    return this.getUserPosts(`explore/tags/${cleanTag}`, forceRefresh);
+    if (!cleanTag) {
+      return { platform: 'instagram', posts: [], source: 'live', message: 'Hashtag Instagram manquant.' };
+    }
+
+    const cacheKey = `instagram:hashtag:${cleanTag.toLowerCase()}`;
+    if (!forceRefresh) {
+      const cached = cacheManager.get(cacheKey);
+      if (cached) {
+        return { platform: 'instagram', posts: cached.data, source: 'cache', cachedAt: new Date(cached.timestamp).toISOString() };
+      }
+    }
+
+    const auth = await playwrightManager.checkSession('instagram');
+    if (!auth.isAuthenticated) {
+      return { platform: 'instagram', posts: [], source: 'live', message: 'Non connecté à Instagram. Cliquez sur l’icône Instagram dans la barre latérale pour vous connecter.' };
+    }
+
+    try {
+      // La page /explore/tags/ redirige vers la recherche Instagram, dont les résultats arrivent via les requêtes "serp" / "hashtag"
+      const posts = await this.scrapeMediaPage(
+        `https://www.instagram.com/explore/tags/${encodeURIComponent(cleanTag)}/`,
+        /serp|search|hashtag/i
+      );
+      if (posts.length > 0) {
+        cacheManager.set(cacheKey, posts, 'live');
+        return { platform: 'instagram', posts, source: 'live' };
+      }
+      return { platform: 'instagram', posts: [], source: 'live', message: `Aucune publication trouvée pour #${cleanTag}.` };
+    } catch (err: any) {
+      return { platform: 'instagram', posts: [], source: 'live', message: err.message || 'Erreur lors de la recherche Instagram' };
+    }
   }
 }
 

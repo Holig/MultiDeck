@@ -19,6 +19,8 @@ import {
 import { useDeck } from '../context/DeckContext';
 import { SocialPost, ThreadResponse, Platform } from '../types';
 import { api } from '../services/api';
+import { canLike, canRepost, canReply } from '../services/capabilities';
+import { RedditVoteButtons } from './cards/RedditVoteButtons';
 
 export const ThreadModal: React.FC = () => {
   const { activeThreadPost, setActiveThreadPost, setActiveMediaPreview } = useDeck();
@@ -575,12 +577,15 @@ export const ThreadModal: React.FC = () => {
                 </span>
 
                 <div className="flex items-center gap-4 text-xs font-semibold">
-                  {/* Bouton Like direct */}
+                  {/* Bouton Like direct (Reddit, X) ; simple compteur ailleurs */}
+                  {currentFocusPost.platform === 'reddit' ? (
+                    <RedditVoteButtons key={currentFocusPost.id} post={currentFocusPost} size="md" />
+                  ) : canLike(currentFocusPost.platform) ? (
                   <button
                     onClick={handleLikeFocusPost}
                     className={`flex items-center gap-1.5 p-1 rounded-lg transition-all duration-150 hover:bg-pink-500/10 ${
                       isLiked 
-                        ? (currentFocusPost.platform === 'reddit' ? 'text-[#ff4500]' : 'text-pink-500 font-bold') 
+                        ? 'text-pink-500 font-bold' 
                         : 'hover:text-pink-500'
                     }`}
                     title={isLiked ? "Je n'aime plus" : "J'aime"}
@@ -588,8 +593,15 @@ export const ThreadModal: React.FC = () => {
                     <Heart className={`w-4 h-4 ${isLiked ? 'fill-current' : ''}`} />
                     <span>{formatNumber(likesCount) || '0'}</span>
                   </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5 p-1">
+                      <Heart className="w-4 h-4" />
+                      <span>{formatNumber(likesCount) || '0'}</span>
+                    </div>
+                  )}
 
-                  {/* Bouton Repost direct */}
+                  {/* Bouton Repost direct (X) ; simple compteur ailleurs */}
+                  {canRepost(currentFocusPost.platform) ? (
                   <button
                     onClick={handleRepostFocusPost}
                     className={`flex items-center gap-1.5 p-1 rounded-lg transition-all duration-150 hover:bg-emerald-500/10 ${
@@ -600,6 +612,12 @@ export const ThreadModal: React.FC = () => {
                     <Repeat2 className="w-4 h-4" />
                     <span>{formatNumber(repostsCount) || '0'}</span>
                   </button>
+                  ) : (
+                    <div className="flex items-center gap-1.5 p-1">
+                      <Repeat2 className="w-4 h-4" />
+                      <span>{formatNumber(repostsCount) || '0'}</span>
+                    </div>
+                  )}
 
                   {/* Nombre de commentaires */}
                   <div className="flex items-center gap-1 text-[#0285ff] p-1">
@@ -612,7 +630,7 @@ export const ThreadModal: React.FC = () => {
           )}
 
           {/* SECTION 2.5 : QUICK REPLY (Formulaire de réponse rapide directe) */}
-          {currentFocusPost && (
+          {currentFocusPost && canReply(currentFocusPost.platform) && (
             <div className="rounded-2xl border theme-border theme-bg-surface p-3 sm:p-4 shadow-sm transition-all focus-within:border-[#0285ff]/60">
               <div className="flex items-start gap-3">
                 <img
@@ -641,7 +659,7 @@ export const ThreadModal: React.FC = () => {
                       </span>
                       {replySuccess && (
                         <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-semibold animate-fadeIn">
-                          <Check className="w-3.5 h-3.5" /> Réponse publiée !
+                          <Check className="w-3.5 h-3.5" /> {currentFocusPost.platform === 'twitter' ? 'Fenêtre X ouverte pour confirmer' : 'Réponse envoyée'}
                         </span>
                       )}
                     </div>

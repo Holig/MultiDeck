@@ -18,7 +18,10 @@ import {
   ChevronRight,
   Share2,
   MessageCircle,
-  Heart
+  Heart,
+  ArrowUp,
+  ChevronsLeft,
+  Keyboard
 } from 'lucide-react';
 import { useDeck } from '../context/DeckContext';
 
@@ -86,7 +89,7 @@ export const InfoModal: React.FC = () => {
               <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
                 MultiDeck
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#1d9bf0]/20 text-[#1d9bf0] border border-[#1d9bf0]/30">
-                  v1.2.0 Universal
+                  v1.1.2
                 </span>
               </h2>
               <p className="text-xs theme-text-secondary">
@@ -188,7 +191,7 @@ export const InfoModal: React.FC = () => {
                   <CheckCircle2 className="w-4 h-4" /> Aucun algorithme imposé
                 </h4>
                 <p className="text-xs theme-text-secondary">
-                  Vous reprenez le contrôle complet de vos flux : choisissez entre le fil recommandé, les abonnements récents chronologiques ou les publications les plus populaires, sans publicités intrusives.
+                  Vous reprenez le contrôle complet de vos flux : selon le réseau, choisissez entre le fil recommandé, les abonnements récents chronologiques ou les publications les plus populaires. Les contenus sponsorisés présents dans certains fils (X, Instagram) peuvent toutefois apparaître.
                 </p>
               </div>
             </div>
@@ -218,8 +221,8 @@ export const InfoModal: React.FC = () => {
                   </p>
                   <ul className="text-[11px] theme-text-secondary space-y-1 list-disc list-inside">
                     <li>Fil <strong>Découverte & Tendances</strong></li>
-                    <li>Fil <strong>Mes Abonnements</strong> (publications récentes)</li>
-                    <li>Recherche globale de publications et de profils</li>
+                    <li>Fil <strong>Mes Abonnements</strong> (publications récentes, en indiquant votre @handle)</li>
+                    <li>Recherche de publications et de hashtags, colonnes de profils</li>
                     <li>Visualiseur de discussions complet</li>
                   </ul>
                 </div>
@@ -250,9 +253,9 @@ export const InfoModal: React.FC = () => {
                   </p>
                   <ul className="text-[11px] theme-text-secondary space-y-1 list-disc list-inside">
                     <li>Colonnes dédiées par <strong>Subreddit</strong> (ex: r/France, r/technology)</li>
-                    <li>Fils <strong>Accueil</strong> et <strong>Populaire</strong></li>
+                    <li>Fils <strong>Accueil</strong>, <strong>Populaire</strong> et <strong>Nouveautés</strong>, recherche et profils</li>
                     <li>Discussion avec <strong>commentaires hiérarchiques imbriqués</strong></li>
-                    <li>Upvotes et réponses directes avec session navigateur</li>
+                    <li>Votes positifs / négatifs et commentaires envoyés avec votre session Reddit connectée</li>
                   </ul>
                 </div>
 
@@ -267,7 +270,7 @@ export const InfoModal: React.FC = () => {
                   <ul className="text-[11px] theme-text-secondary space-y-1 list-disc list-inside">
                     <li>Fils <strong>Pour vous</strong>, <strong>Abonnements</strong> et <strong>Listes X</strong></li>
                     <li>Recherche en direct et profils complets</li>
-                    <li>Interactions directes Like, Repost et Thread Viewer</li>
+                    <li>Like, Repost et Réponse via la fenêtre officielle de X, Thread Viewer</li>
                   </ul>
                 </div>
 
@@ -277,7 +280,7 @@ export const InfoModal: React.FC = () => {
                     <span>📺 YouTube</span>
                   </div>
                   <p className="text-xs theme-text-secondary">
-                    Colonnes de chaînes, flux d'abonnements récents et filtre spécialisé pour les <strong>YouTube Shorts</strong>.
+                    Colonnes de chaînes, recherche, tendances et flux d'abonnements (connexion requise) avec filtre spécialisé pour les <strong>YouTube Shorts</strong>.
                   </p>
                 </div>
 
@@ -287,7 +290,7 @@ export const InfoModal: React.FC = () => {
                     <span>🎵 TikTok & Instagram</span>
                   </div>
                   <p className="text-xs theme-text-secondary">
-                    Vidéos courtes, Reels et publications photo avec lecteur média intégré plein écran.
+                    Fils Pour toi / Pour vous et Abonnements, profils, hashtags, Reels et recherche TikTok, avec lecteur média intégré plein écran (connexion requise).
                   </p>
                 </div>
               </div>
@@ -302,7 +305,7 @@ export const InfoModal: React.FC = () => {
                 <div>
                   <h3 className="font-bold text-emerald-400 mb-1">Confidentialité Totale (Zéro Cloud)</h3>
                   <p className="text-xs theme-text-secondary">
-                    Contrairement aux applications SaaS tierces, MultiDeck <strong>ne possède aucun serveur central</strong>. Vos données ne transitent par aucun serveur externe et demeurent strictement confinées sur votre PC.
+                    Contrairement aux applications SaaS tierces, MultiDeck <strong>ne possède aucun serveur central</strong> : il dialogue directement avec les réseaux sociaux depuis votre PC. Seules exceptions : la traduction automatique (si activée) envoie le texte des publications au service MyMemory, et certains avatars de remplacement sont générés par ui-avatars.com.
                   </p>
                 </div>
               </div>
@@ -313,7 +316,7 @@ export const InfoModal: React.FC = () => {
                   <div>
                     <h4 className="font-bold text-xs">Aucune télémétrie ni pistage</h4>
                     <p className="text-xs theme-text-secondary">
-                      MultiDeck ne collecte aucune donnée personnelle, aucun journal d'activité ni statistiques d'utilisation.
+                      MultiDeck ne collecte ni n'envoie aucune donnée personnelle ou statistique d'utilisation. Le seul journal est technique et reste sur votre PC (fichier multideck.log du lanceur).
                     </p>
                   </div>
                 </div>
@@ -323,7 +326,7 @@ export const InfoModal: React.FC = () => {
                   <div>
                     <h4 className="font-bold text-xs">Stockage local des sessions</h4>
                     <p className="text-xs theme-text-secondary">
-                      Vos cookies de session et profils de navigation sont enregistrés dans le répertoire local sécurisé <code className="px-1.5 py-0.5 rounded bg-black/30 font-mono text-[11px]">server/user_data/</code>.
+                      Vos cookies de session et profils de navigation sont enregistrés localement dans <code className="px-1.5 py-0.5 rounded bg-black/30 font-mono text-[11px]">server/user_data/</code>, non chiffrés : ne partagez jamais ce dossier. Par défaut, l'application n'est accessible que depuis ce PC.
                     </p>
                   </div>
                 </div>
@@ -333,7 +336,7 @@ export const InfoModal: React.FC = () => {
                   <div>
                     <h4 className="font-bold text-xs">Adresse IP résidentielle préservée</h4>
                     <p className="text-xs theme-text-secondary">
-                      Toutes les requêtes vers les réseaux sociaux proviennent directement de votre propre connexion internet. Vos comptes ne risquent aucun bannissement de masse lié aux serveurs mutualisés.
+                      Toutes les requêtes vers les réseaux sociaux proviennent directement de votre propre connexion internet, ce qui évite les blocages liés aux serveurs mutualisés. La lecture automatisée reste contraire aux conditions de certains réseaux (X, Meta, TikTok) : un usage raisonnable limite le risque pour vos comptes.
                     </p>
                   </div>
                 </div>
@@ -360,7 +363,7 @@ export const InfoModal: React.FC = () => {
                     <Sparkles className="w-4 h-4" /> 1. Détection automatique 1-Clic (Recommandé)
                   </div>
                   <p className="text-xs theme-text-secondary mb-2">
-                    Si vous êtes déjà connecté sur votre navigateur habituel (Google Chrome, Edge, Brave, Firefox, Opera ou Vivaldi), MultiDeck peut synchroniser automatiquement votre session pour <strong>X, Reddit, Threads et Instagram</strong>.
+                    Si vous êtes déjà connecté sur votre navigateur habituel (Google Chrome, Edge, Brave, Firefox, Opera, Opera GX ou Vivaldi), MultiDeck peut importer automatiquement votre session pour <strong>X, Reddit, Threads, Instagram, TikTok et YouTube</strong>. Cette détection nécessite Python 3 installé sur le PC.
                   </p>
                   <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-medium">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Vous n'avez pas besoin de ressaisir vos mots de passe.
@@ -372,7 +375,7 @@ export const InfoModal: React.FC = () => {
                     <UserCheck className="w-4 h-4" /> 2. Connexion Interactive Sécurisée
                   </div>
                   <p className="text-xs theme-text-secondary mb-2">
-                    Ouvre une fenêtre de navigateur officielle et isolée pour vous connecter directement auprès du réseau social. Dès la connexion validée, la fenêtre se referme et votre session est prête.
+                    Ouvre une fenêtre de navigateur isolée, propre à MultiDeck, sur la page de connexion officielle du réseau social. Connectez-vous normalement puis fermez la fenêtre : votre session est enregistrée localement.
                   </p>
                 </div>
 
@@ -407,7 +410,7 @@ export const InfoModal: React.FC = () => {
                     <HardDrive className="w-4 h-4" /> Durée de rétention (TTL)
                   </div>
                   <p className="text-xs theme-text-secondary">
-                    Les flux sont conservés en cache rapide pendant <strong>3 à 5 minutes</strong>. Changer d'onglet ou basculer entre colonnes est instantané sans requête réseau superflue.
+                    Les flux sont conservés en cache rapide pendant <strong>environ 4 minutes</strong> (1 minute pour les conversations). Changer d'onglet ou basculer entre colonnes est instantané sans requête réseau superflue.
                   </p>
                 </div>
 
@@ -445,13 +448,67 @@ export const InfoModal: React.FC = () => {
 
               <div className="space-y-3">
                 <div className="p-3.5 rounded-xl theme-bg-app/50 border theme-border flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5">
+                    <Keyboard className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs">Raccourcis clavier du deck</h4>
+                    <ul className="text-xs theme-text-secondary space-y-1 mt-1">
+                      <li><kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">←</kbd> <kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">→</kbd> : colonne précédente / suivante (la colonne active est entourée de bleu ; un clic sur une colonne la rend active). Depuis la première colonne, ← sélectionne la barre latérale de gauche : Tab ou ↑ ↓ y parcourent les boutons, → revient aux colonnes</li>
+                      <li><kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">↑</kbd> <kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">↓</kbd> : faire défiler la colonne active · <kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">Page ↑</kbd> <kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">Page ↓</kbd> : d'un écran entier</li>
+                      <li><kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">Tab</kbd> <kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">Maj + Tab</kbd> : parcourir les boutons de la colonne active (actualiser, réglages, déplacement, fermeture, onglets, publications…), puis <kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">Entrée</kbd> pour activer</li>
+                      <li><kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">T</kbd> : revenir en haut de la colonne active</li>
+                      <li><kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">Début</kbd> <kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">Fin</kbd> : aller à la première / dernière colonne</li>
+                      <li><kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">R</kbd> : actualiser toutes les colonnes</li>
+                    </ul>
+                    <p className="text-[11px] theme-text-secondary mt-1">Inactifs pendant la saisie de texte ou lorsqu'une fenêtre (guide, paramètres, conversation…) est ouverte.</p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl theme-bg-app/50 border theme-border flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-[#1d9bf0]/20 text-[#1d9bf0] flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5">
+                    <RefreshCw className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs">Actualiser toutes les colonnes d’un clic</h4>
+                    <p className="text-xs theme-text-secondary">
+                      Cliquez sur le logo MultiDeck en haut de la barre latérale gauche : toutes les colonnes affichées sont actualisées en même temps, exactement comme si vous cliquiez sur le bouton « Actualiser » de chacune d'elles.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl theme-bg-app/50 border theme-border flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5">
+                    <ArrowUp className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs">Revenir en haut d’une colonne</h4>
+                    <p className="text-xs theme-text-secondary">
+                      Dès que vous faites défiler une colonne, l'icône du réseau dans son en-tête s'entoure d'un liseré bleu et se transforme en flèche ↑ au survol : un clic remonte la colonne tout en haut. Revenue en haut, l'icône redevient un simple repère visuel.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl theme-bg-app/50 border theme-border flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5">
+                    <ChevronsLeft className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs">Aller à la première ou à la dernière colonne</h4>
+                    <p className="text-xs theme-text-secondary">
+                      Quand vos colonnes dépassent la largeur de l'écran, un bouton « Dernière colonne » apparaît en bas à droite tant que vous êtes au début du deck, et un bouton « Première colonne » apparaît en bas à gauche une fois arrivé au bout : un clic vous y amène directement.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-xl theme-bg-app/50 border theme-border flex items-start gap-3">
                   <div className="w-7 h-7 rounded-lg bg-pink-500/20 text-pink-400 flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5">
                     <Heart className="w-4 h-4" />
                   </div>
                   <div>
                     <h4 className="font-bold text-xs">Interactions directes depuis les cartes</h4>
                     <p className="text-xs theme-text-secondary">
-                      Cliquez directement sur les cœurs pour aimer/upvoter, sur l'icône de repost pour retweeter, et sur la bulle de discussion pour ouvrir la conversation complète.
+                      La bulle de discussion ouvre la conversation complète (X, Bluesky, Threads, Reddit). Sur Reddit, les flèches ⬆ / ⬇ envoient un vote positif ou négatif (un second clic l'annule) ; sur X, le cœur et le repost ouvrent la fenêtre officielle de X pour confirmer. Sur les autres réseaux, les compteurs (j'aime, reposts, commentaires) sont affichés à titre indicatif, sans bouton : ouvrez la publication d'origine pour interagir.
                     </p>
                   </div>
                 </div>
@@ -463,7 +520,7 @@ export const InfoModal: React.FC = () => {
                   <div>
                     <h4 className="font-bold text-xs">Réponse Rapide (Quick Reply) & Ctrl+Entrée</h4>
                     <p className="text-xs theme-text-secondary">
-                      Dans le visualiseur de discussion, écrivez votre réponse et appuyez sur <kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">Ctrl + Entrée</kbd> pour soumettre votre message instantanément.
+                      Proposée uniquement sur Reddit (réponse envoyée directement) et X (la fenêtre officielle s'ouvre pour confirmer). Dans le visualiseur de discussion, écrivez votre réponse et appuyez sur <kbd className="px-1.5 py-0.5 rounded bg-black/40 font-mono text-[10px]">Ctrl + Entrée</kbd> pour soumettre votre message instantanément.
                     </p>
                   </div>
                 </div>

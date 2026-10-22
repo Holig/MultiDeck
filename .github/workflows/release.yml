@@ -28,9 +28,9 @@ jobs:
       - name: Install dependencies
         shell: cmd
         run: |
-          call npm install
-          cd server && call npm install
-          cd ..\client && call npm install
+          call npm ci
+          cd server && call npm ci
+          cd ..\client && call npm ci
 
       - name: Build Installer (React + Server + Launcher + Setup.exe)
         shell: cmd

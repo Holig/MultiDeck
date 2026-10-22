@@ -167,6 +167,10 @@ export class ThreadsService {
 
             const hasRepost = fullText.includes('a republié') || fullText.includes('reposted');
 
+            // Date réelle de publication (attribut datetime de l'élément <time>)
+            const timeEl = container.querySelector('time');
+            const isoDate = timeEl ? timeEl.getAttribute('datetime') || '' : '';
+
             results.push({
               id: postId,
               authorHandle,
@@ -175,6 +179,7 @@ export class ThreadsService {
               postUrl,
               text: text || fullText,
               relativeDate,
+              isoDate,
               mediaUrls: postMediaUrls,
               videoUrls: videos,
               statNumbers,
@@ -225,7 +230,7 @@ export class ThreadsService {
           type: 'post',
           author,
           text: item.text,
-          createdAt: new Date().toISOString(),
+          createdAt: item.isoDate && !isNaN(Date.parse(item.isoDate)) ? new Date(item.isoDate).toISOString() : new Date().toISOString(),
           stats: {
             likes,
             comments,
@@ -359,12 +364,14 @@ export class ThreadsService {
       const posts = await playwrightManager.executeWithLock('threads', async (ctx) => {
         const page = await ctx.newPage();
         try {
-          const targetUrl = 'https://www.threads.net/';
+          // URL dédiée à chaque onglet : la page d'accueil "/" rouvre le dernier onglet consulté
+          const isFollowing = mode === 'following_latest' || mode === 'following';
+          const targetUrl = isFollowing ? 'https://www.threads.net/following' : 'https://www.threads.net/for_you';
           await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
           await page.waitForTimeout(3000);
 
-          // Si l'utilisateur demande "Mes Abonnements", tenter de basculer sur l'onglet Suivi(e)s
-          if (mode === 'following_latest' || mode === 'following') {
+          // Repli : si l'URL dédiée n'a pas ouvert l'onglet Suivi(e)s, tenter de cliquer dessus
+          if (isFollowing && !page.url().includes('/following')) {
             try {
               const followingTab = await page.$(
                 'div[role="tab"]:has-text("Suivi"), div[role="tab"]:has-text("Following"), a[href*="following"], button:has-text("Suivi"), button:has-text("Following")'
@@ -416,7 +423,17 @@ export class ThreadsService {
   public async getPostThread(target: string, forceRefresh = false): Promise<ThreadResponse> {
     await this.ensureSession();
     let cleanTarget = target.trim();
-    if (!cleanTarget.startsWith('http')) {
+    if (cleanTarget.startsWith('http')) {
+      // Le navigateur connecté ne doit naviguer que sur Threads (pas d'URL arbitraire / réseau interne)
+      let hostname = '';
+      try {
+        hostname = new URL(cleanTarget).hostname.toLowerCase();
+      } catch {}
+      const isThreadsHost = ['threads.net', 'threads.com'].some((d) => hostname === d || hostname.endsWith(`.${d}`));
+      if (!isThreadsHost) {
+        throw new Error('URL de publication Threads invalide.');
+      }
+    } else {
       if (cleanTarget.includes('/post/')) {
         cleanTarget = `https://www.threads.net${cleanTarget.startsWith('/') ? '' : '/'}${cleanTarget}`;
       } else {

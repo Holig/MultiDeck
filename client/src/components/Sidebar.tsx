@@ -24,6 +24,7 @@ export const Sidebar: React.FC = () => {
     setSelectedAuthPlatform,
     setIsSettingsModalOpen,
     setIsInfoModalOpen,
+    refreshAllColumns,
     theme,
     setTheme,
     t
@@ -70,12 +71,22 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <aside className="w-16 md:w-20 h-screen theme-bg-sidebar theme-border border-r flex flex-col items-center py-3.5 justify-between select-none z-20 flex-shrink-0 shadow-xl transition-colors duration-150">
+    <aside data-deck-sidebar className="w-16 md:w-20 h-screen theme-bg-sidebar theme-border border-r flex flex-col items-center py-3.5 justify-between select-none z-20 flex-shrink-0 shadow-xl transition-colors duration-150">
       {/* Haut : Logo & Bouton Ajouter une colonne */}
       <div className="flex flex-col items-center gap-4 w-full">
         <div 
-          className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#1d9bf0] via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/20 hover:scale-105 transition-transform cursor-pointer"
-          title="MultiDeck Universal Social Dashboard"
+          onClick={refreshAllColumns}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              refreshAllColumns();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Actualiser toutes les colonnes"
+          className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#1d9bf0] via-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/20 hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+          title="MultiDeck — Cliquer pour actualiser toutes les colonnes"
         >
           <Layers className="w-6 h-6" />
         </div>

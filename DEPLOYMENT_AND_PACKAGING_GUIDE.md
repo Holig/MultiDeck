@@ -13,6 +13,15 @@
   2. **Cloudflare Tunnel (Zero Trust) :** Permet d'avoir une URL HTTPS publique avec protection par mot de passe/code PIN par email, sans ouvrir de port sur la box.
   3. **VPS Cloud (Hetzner, OVH, etc.) :** Fait tourner le projet 24h/24, mais nécessite 2 à 4 Go de RAM et expose aux blocages d'adresses IP de datacenters par X et Instagram.
 
+> **🔒 Accès distant désactivé par défaut.** Par sécurité, le serveur refuse toute requête qui ne vient pas du PC lui-même, ainsi que les noms d'hôte et origines inconnus (protection contre le CSRF et le DNS rebinding). Pour l'activer, ajoutez dans `server/.env` :
+> ```env
+> # Tailscale / réseau local : autoriser les autres machines
+> MULTIDECK_ALLOW_REMOTE=true
+> # Noms d'hôte ou IP utilisés dans l'URL (Tailscale MagicDNS, IP 100.x, domaine Cloudflare...)
+> MULTIDECK_ALLOWED_HOSTS=monpc.tailnet.ts.net,100.101.102.103
+> ```
+> Avec **Cloudflare Tunnel**, `cloudflared` se connecte depuis le PC lui-même : seule la ligne `MULTIDECK_ALLOWED_HOSTS=deck.mondomaine.fr` est nécessaire.
+
 ---
 
 ### B. Emplacement du Cache et des Sessions lors d'une connexion distante

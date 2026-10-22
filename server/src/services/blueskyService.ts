@@ -238,9 +238,18 @@ class BlueskyService {
     }
 
     try {
-      let url = `${this.apiBase}/app.bsky.feed.searchPosts?q=${encodeURIComponent(cleanQuery)}&limit=30`;
+      // L'API publique refuse le paramètre "cursor" sans authentification (403) :
+      // la page suivante est demandée avec "until" = date du post le plus ancien déjà reçu
+      // Hashtag seul (#art) : filtre "tag" dédié, car l'API rejette "until" quand la requête contient un #
+      const hashtagMatch = cleanQuery.match(/^#([\p{L}\p{N}_]+)$/u);
+      const searchParams = hashtagMatch
+        ? `q=${encodeURIComponent(hashtagMatch[1])}&tag=${encodeURIComponent(hashtagMatch[1])}`
+        : `q=${encodeURIComponent(cleanQuery)}`;
+      let url = `${this.apiBase}/app.bsky.feed.searchPosts?${searchParams}&limit=30&sort=latest`;
       if (cursor) {
-        url += `&cursor=${encodeURIComponent(cursor)}`;
+        url += cursor.startsWith('until:')
+          ? `&until=${encodeURIComponent(cursor.slice('until:'.length))}`
+          : `&cursor=${encodeURIComponent(cursor)}`;
       }
       const res = await fetch(url);
       if (!res.ok) {
@@ -250,7 +259,11 @@ class BlueskyService {
 
       const data = await res.json();
       const rawPosts = data.posts || [];
-      const nextCursor = data.cursor || undefined;
+      const oldestIndexedAt = rawPosts
+        .map((p: any) => p.indexedAt)
+        .filter((d: any) => typeof d === 'string' && !isNaN(Date.parse(d)))
+        .sort()[0];
+      const nextCursor = rawPosts.length > 0 && oldestIndexedAt ? `until:${oldestIndexedAt}` : undefined;
       const posts: SocialPost[] = rawPosts.map((post: any) => this.mapPost(post));
 
       cacheManager.set(cacheKey, posts, 'live', nextCursor);
