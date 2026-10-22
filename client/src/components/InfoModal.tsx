@@ -89,7 +89,7 @@ export const InfoModal: React.FC = () => {
               <h2 className="text-base sm:text-lg font-bold flex items-center gap-2">
                 MultiDeck
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#1d9bf0]/20 text-[#1d9bf0] border border-[#1d9bf0]/30">
-                  v1.1.2
+                  v1.2.0
                 </span>
               </h2>
               <p className="text-xs theme-text-secondary">
